@@ -1,0 +1,73 @@
+name: queuenova_mobile
+description: Smart Queue Management System for Government Services
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_stripe: ^10.0.0
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+
+  # HTTP & Networking
+  http: ^1.1.0
+  dio: ^5.4.0
+
+  # CSV & Data
+  csv: ^5.1.1
+
+  # UI & Design
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  lottie: ^3.0.0
+  page_transition: ^2.1.0
+  flutter_animate: ^4.5.0
+  shimmer: ^3.0.0
+  badges: ^3.1.2
+
+  # State Management
+  provider: ^6.1.1
+
+  # Local Storage
+  shared_preferences: ^2.2.2
+
+  # QR Scanner
+  mobile_scanner: ^7.2.0
+  qr_flutter: ^4.1.0
+
+  # File & Documents
+  image_picker: ^1.0.5
+  file_picker: ^8.0.0
+  open_file: ^3.5.11
+
+  # Utilities
+  intl: ^0.20.2
+  connectivity_plus: ^5.0.2
+
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+  easy_localization: ^3.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+    - assets/translations/
