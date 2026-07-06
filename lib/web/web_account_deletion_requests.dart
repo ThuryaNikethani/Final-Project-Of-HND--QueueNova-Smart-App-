@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -15,30 +16,58 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
   final List<String> filters = ['All', 'Pending', 'Approved', 'Rejected'];
 
   bool _loading = true;
+  String? _error;
   List<Map<String, dynamic>> _requests = [];
+  StreamSubscription<QuerySnapshot>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _loadRequests();
+    _subscription = FirebaseFirestore.instance
+        .collection('account_deletion_requests')
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      final docs = snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList()
+        ..sort((a, b) {
+          final aTime = a['requestedAt'] as Timestamp?;
+          final bTime = b['requestedAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+      setState(() {
+        _requests = docs;
+        _loading = false;
+        _error = null;
+      });
+    }, onError: (Object e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    });
   }
 
-  Future<void> _loadRequests() async {
-    setState(() => _loading = true);
-    final snapshot = await FirebaseFirestore.instance
-        .collection('account_deletion_requests')
-        .get();
-    final docs = snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList()
-      ..sort((a, b) {
-        final aTime = a['requestedAt'] as Timestamp?;
-        final bTime = b['requestedAt'] as Timestamp?;
-        if (aTime == null || bTime == null) return 0;
-        return bTime.compareTo(aTime);
-      });
-    if (!mounted) return;
-    setState(() {
-      _requests = docs;
-      _loading = false;
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _notifyCitizen(Map<String, dynamic> req, {
+    required String title,
+    required String message,
+  }) async {
+    final uid = req['uid'] as String?;
+    if (uid == null || uid.isEmpty) return;
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'uid': uid,
+      'title': title,
+      'message': message,
+      'type': 'account_deletion',
+      'isRead': false,
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -82,7 +111,12 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                 'reviewedBy': widget.officerName,
                 'reviewedAt': FieldValue.serverTimestamp(),
               });
-              await _loadRequests();
+              await _notifyCitizen(
+                req,
+                title: 'Account Deletion Request Approved',
+                message:
+                    'Your account deletion request has been approved. Open Privacy & Security to choose whether to deactivate or permanently delete your account.',
+              );
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -149,7 +183,12 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                 'reviewedBy': widget.officerName,
                 'reviewedAt': FieldValue.serverTimestamp(),
               });
-              await _loadRequests();
+              await _notifyCitizen(
+                req,
+                title: 'Account Deletion Request Rejected',
+                message:
+                    'Your account deletion request was rejected: ${reasonController.text.trim()}',
+              );
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -178,16 +217,20 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
         title: const Text('Account Deletion Requests'),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadRequests,
-            tooltip: 'Refresh',
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Failed to load requests:\n$_error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            )
           : Padding(
               padding: const EdgeInsets.all(24),
               child: Column(

@@ -23,20 +23,17 @@ class RolePermissions {
       'system_health',
       'payment_reports',
       'document_management',  // ← ADDED
-      'document_approval',    // ← ADDED
       'account_deletion_requests',
     ],
     UserRole.queueManager: [
       'dashboard',
       'queue_management',
       'document_management',  // ← ADDED
-      'document_approval',    // ← ADDED
     ],
     UserRole.serviceProcessor: [
       'dashboard',
       'service_processing',
       'document_management',
-      'document_approval',    // ← ADDED
       'account_deletion_requests',
     ],
     UserRole.reception: [
@@ -44,7 +41,6 @@ class RolePermissions {
       'reception',
       'appointments',
       'document_management',  // ← ADDED
-      'document_approval',    // ← ADDED
     ],
     UserRole.departmentManager: [
       'dashboard',
@@ -53,7 +49,6 @@ class RolePermissions {
       'staff_performance',
       'payment_reports',
       'document_management',  // ← ADDED
-      'document_approval',    // ← ADDED
     ],
   };
 

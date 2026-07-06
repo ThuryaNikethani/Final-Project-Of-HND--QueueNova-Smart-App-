@@ -30,9 +30,16 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // The dashboard has its own demo login (web_login.dart) and doesn't
   // otherwise use Firebase Auth — sign in anonymously purely so Firestore
-  // security rules requiring request.auth != null are satisfied.
+  // security rules requiring request.auth != null are satisfied. This must
+  // not block startup: if Anonymous sign-in isn't enabled in the Firebase
+  // project, the dashboard should still render rather than show a blank
+  // white screen.
   if (FirebaseAuth.instance.currentUser == null) {
-    await FirebaseAuth.instance.signInAnonymously();
+    try {
+      await FirebaseAuth.instance.signInAnonymously();
+    } catch (e) {
+      debugPrint('Anonymous sign-in failed (dashboard will still load): $e');
+    }
   }
   runApp(const WebQueueNovaApp());
 }
@@ -206,12 +213,6 @@ class _WebDashboardState extends State<WebDashboard> {
         'icon': Icons.description
       },
       {
-        'widget': const WebDocumentManagement(),  // ← ADDED
-        'permission': 'document_approval',
-        'label': 'Document Approval',
-        'icon': Icons.rate_review
-      },
-      {
         'widget': WebAccountDeletionRequests(officerName: widget.userName),
         'permission': 'account_deletion_requests',
         'label': 'Account Deletion Requests',
@@ -331,6 +332,7 @@ class _WebDashboardState extends State<WebDashboard> {
               userRole: widget.userRole,
               userName: widget.userName,
               userEmail: widget.userEmail,
+              menuItems: _menuItems,
             ),
             Expanded(
               child: pages[_selectedIndex],

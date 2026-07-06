@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../web_role_model.dart';
 
 class WebSidebar extends StatelessWidget {
@@ -7,6 +8,7 @@ class WebSidebar extends StatelessWidget {
   final UserRole userRole;
   final String userName;
   final String userEmail;
+  final List<Map<String, dynamic>> menuItems;
 
   const WebSidebar({
     super.key,
@@ -15,117 +17,11 @@ class WebSidebar extends StatelessWidget {
     required this.userRole,
     required this.userName,
     required this.userEmail,
+    required this.menuItems,
   });
-
-  List<Map<String, dynamic>> getMenuItems() {
-    final permissions = RolePermissions.permissions[userRole] ?? [];
-    final allItems = [
-      {
-        'icon': Icons.dashboard,
-        'label': 'Dashboard',
-        'index': 0,
-        'permission': 'dashboard'
-      },
-      {
-        'icon': Icons.queue,
-        'label': 'Queue Management',
-        'index': 1,
-        'permission': 'queue_management'
-      },
-      {
-        'icon': Icons.assignment,
-        'label': 'Service Processing',
-        'index': 2,
-        'permission': 'service_processing'
-      },
-      {
-        'icon': Icons.qr_code_scanner,
-        'label': 'Reception',
-        'index': 3,
-        'permission': 'reception'
-      },
-      {
-        'icon': Icons.description,
-        'label': 'Documents',
-        'index': 4,
-        'permission': 'document_management'
-      },
-      {
-        'icon': Icons.calendar_today,
-        'label': 'Appointments',
-        'index': 5,
-        'permission': 'appointments'
-      },
-      {
-        'icon': Icons.people,
-        'label': 'Users',
-        'index': 6,
-        'permission': 'user_management'
-      },
-      {
-        'icon': Icons.analytics,
-        'label': 'Analytics',
-        'index': 7,
-        'permission': 'analytics'
-      },
-      {
-        'icon': Icons.receipt,
-        'label': 'Reports',
-        'index': 8,
-        'permission': 'reports'
-      },
-      {
-        'icon': Icons.settings,
-        'label': 'System Settings',
-        'index': 9,
-        'permission': 'system_settings'
-      },
-      {
-        'icon': Icons.people_outline,
-        'label': 'Staff Performance',
-        'index': 10,
-        'permission': 'staff_performance'
-      },
-      {
-        'icon': Icons.security,
-        'label': 'Security',
-        'index': 11,
-        'permission': 'security_settings'
-      },
-      {
-        'icon': Icons.backup,
-        'label': 'Backup & Restore',
-        'index': 12,
-        'permission': 'backup_restore'
-      },
-      {
-        'icon': Icons.history,
-        'label': 'Audit Logs',
-        'index': 13,
-        'permission': 'audit_logs'
-      },
-      {
-        'icon': Icons.health_and_safety,
-        'label': 'System Health',
-        'index': 14,
-        'permission': 'system_health'
-      },
-      {
-        'icon': Icons.payment,
-        'label': 'Payment Reports',
-        'index': 15,
-        'permission': 'payment_reports'
-      },
-    ];
-
-    return allItems
-        .where((item) => permissions.contains(item['permission']))
-        .toList();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final menuItems = getMenuItems();
     final safeIndex = selectedIndex < menuItems.length ? selectedIndex : 0;
 
     return Container(
@@ -379,6 +275,8 @@ class WebSidebar extends StatelessWidget {
                                     ),
                                   ),
                                 ),
+                                if (item['permission'] == 'account_deletion_requests')
+                                  _PendingDeletionBadge(),
                                 if (isSelected)
                                   Container(
                                     width: 3,
@@ -467,6 +365,41 @@ class WebSidebar extends StatelessWidget {
           const SizedBox(height: 16),
         ],
       ),
+    );
+  }
+}
+
+/// Live count of pending account-deletion requests, shown as a small red
+/// badge next to that sidebar item so officers notice new requests without
+/// needing to open the screen or click refresh.
+class _PendingDeletionBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('account_deletion_requests')
+          .where('status', isEqualTo: 'pending')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.docs.length ?? 0;
+        if (count == 0) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '$count',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -13,88 +16,85 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String selectedFilter = 'All';
   final List<String> filters = ['All', 'Unread', 'Queue', 'Appointment', 'System'];
 
-  List<Map<String, dynamic>> notifications = [
-    {
-      'id': '1',
-      'title': 'Your token is called',
-      'message': 'Token A-024 is now being served at Counter 3. Please proceed.',
-      'type': 'queue',
-      'isRead': false,
-      'timestamp': DateTime.now().subtract(const Duration(minutes: 2)),
-      'icon': Icons.queue_rounded,
-      'color': AppColors.success,
-    },
-    {
-      'id': '2',
-      'title': 'Appointment Reminder',
-      'message': 'Your passport renewal appointment is tomorrow at 10:30 AM at Divisional Secretariat - Colombo.',
-      'type': 'appointment',
-      'isRead': false,
-      'timestamp': DateTime.now().subtract(const Duration(hours: 5)),
-      'icon': Icons.calendar_today_rounded,
-      'color': AppColors.primaryBlue,
-    },
-    {
-      'id': '3',
-      'title': 'Document Approved',
-      'message': 'Your uploaded NIC document has been verified and approved by the Department of Registration.',
-      'type': 'system',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 1)),
-      'icon': Icons.check_circle_rounded,
-      'color': AppColors.success,
-    },
-    {
-      'id': '4',
-      'title': 'Queue Update',
-      'message': 'There are 5 people ahead of you. Estimated wait time: 25 minutes.',
-      'type': 'queue',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 1)),
-      'icon': Icons.people_alt_rounded,
-      'color': AppColors.info,
-    },
-    {
-      'id': '5',
-      'title': 'Office Holiday Notice',
-      'message': 'All government offices will remain closed on May 20th & 21st for Vesak Full Moon Poya Day.',
-      'type': 'system',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 2)),
-      'icon': Icons.business_rounded,
-      'color': AppColors.warning,
-    },
-    {
-      'id': '6',
-      'title': 'Smart Office Recommendation',
-      'message': 'RMV - Kiribathgoda is less crowded today. Estimated wait time: 20 minutes.',
-      'type': 'system',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 2)),
-      'icon': Icons.location_city_rounded,
-      'color': AppColors.accentTeal,
-    },
-    {
-      'id': '7',
-      'title': 'Appointment Confirmed',
-      'message': 'Your driving license appointment has been confirmed for May 28, 2026 at 02:00 PM.',
-      'type': 'appointment',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 3)),
-      'icon': Icons.directions_car_rounded,
-      'color': AppColors.success,
-    },
-    {
-      'id': '8',
-      'title': 'Priority Queue Granted',
-      'message': 'Your emergency priority request has been approved. Please proceed to Counter 1.',
-      'type': 'queue',
-      'isRead': true,
-      'timestamp': DateTime.now().subtract(const Duration(days: 4)),
-      'icon': Icons.priority_high_rounded,
-      'color': AppColors.warning,
-    },
-  ];
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> notifications = [];
+  StreamSubscription<QuerySnapshot>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      _loading = false;
+      return;
+    }
+    _subscription = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('uid', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      setState(() {
+        notifications = snapshot.docs.map((d) {
+          final data = d.data();
+          final type = data['type'] as String? ?? 'system';
+          final createdAt = data['createdAt'] as Timestamp?;
+          return {
+            'id': d.id,
+            'title': data['title'] as String? ?? '',
+            'message': data['message'] as String? ?? '',
+            'type': type,
+            'isRead': data['isRead'] as bool? ?? false,
+            'timestamp': createdAt?.toDate() ?? DateTime.now(),
+            'icon': _iconFor(type),
+            'color': _colorFor(type),
+          };
+        }).toList();
+        _loading = false;
+        _error = null;
+      });
+    }, onError: (Object e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  IconData _iconFor(String type) {
+    switch (type) {
+      case 'queue':
+        return Icons.queue_rounded;
+      case 'appointment':
+        return Icons.calendar_today_rounded;
+      case 'account_deletion':
+        return Icons.person_remove_rounded;
+      default:
+        return Icons.notifications_rounded;
+    }
+  }
+
+  Color _colorFor(String type) {
+    switch (type) {
+      case 'queue':
+        return AppColors.info;
+      case 'appointment':
+        return AppColors.primaryBlue;
+      case 'account_deletion':
+        return AppColors.error;
+      default:
+        return AppColors.warning;
+    }
+  }
 
   List<Map<String, dynamic>> get filteredNotifications {
     if (selectedFilter == 'All') {
@@ -111,20 +111,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _markAsRead(String id) {
-    setState(() {
-      final index = notifications.indexWhere((n) => n['id'] == id);
-      if (index != -1) {
-        notifications[index]['isRead'] = true;
-      }
-    });
+    FirebaseFirestore.instance.collection('notifications').doc(id).update({'isRead': true});
   }
 
   void _markAllAsRead() {
-    setState(() {
-      for (var notification in notifications) {
-        notification['isRead'] = true;
-      }
-    });
+    final batch = FirebaseFirestore.instance.batch();
+    for (final n in notifications.where((n) => n['isRead'] == false)) {
+      batch.update(FirebaseFirestore.instance.collection('notifications').doc(n['id'] as String), {'isRead': true});
+    }
+    batch.commit();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('All notifications marked as read'),
@@ -147,10 +142,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                notifications.clear();
-              });
+            onPressed: () async {
+              final batch = FirebaseFirestore.instance.batch();
+              for (final n in notifications) {
+                batch.delete(FirebaseFirestore.instance.collection('notifications').doc(n['id'] as String));
+              }
+              await batch.commit();
+              if (!context.mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -276,7 +274,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
       ),
-      body: filteredList.isEmpty
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Failed to load notifications:\n$_error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            )
+          : filteredList.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
