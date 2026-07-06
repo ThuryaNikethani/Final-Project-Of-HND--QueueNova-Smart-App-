@@ -29,10 +29,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _loading = false;
       return;
     }
+    // Sorted client-side (rather than orderBy in the query) to avoid needing
+    // a Firestore composite index just for this lookup.
     _subscription = FirebaseFirestore.instance
         .collection('notifications')
         .where('uid', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
@@ -51,7 +52,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             'icon': _iconFor(type),
             'color': _colorFor(type),
           };
-        }).toList();
+        }).toList()
+          ..sort((a, b) => (b['timestamp'] as DateTime).compareTo(a['timestamp'] as DateTime));
         _loading = false;
         _error = null;
       });

@@ -113,14 +113,21 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(dialogContext);
               final reason = reasonController.text.trim();
-              await authService.submitAccountDeletionRequest(
+              final success = await authService.submitAccountDeletionRequest(
                 reason: reason.isEmpty ? null : reason,
               );
               await _loadDeletionRequestStatus();
+              final message = success
+                  ? 'Account deletion request submitted'
+                  : switch (authService.lastDeletionRequestError) {
+                      'already_pending' => 'You already have a pending deletion request',
+                      'not_signed_in' => 'You must be signed in to submit this request',
+                      _ => 'Failed to submit request. Please try again.',
+                    };
               messenger.showSnackBar(
-                const SnackBar(
-                  content: Text('Account deletion request submitted'),
-                  backgroundColor: AppColors.success,
+                SnackBar(
+                  content: Text(message),
+                  backgroundColor: success ? AppColors.success : AppColors.error,
                 ),
               );
             },

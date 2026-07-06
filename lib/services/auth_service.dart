@@ -17,6 +17,7 @@ class AuthService extends ChangeNotifier {
   String? _userPhotoUrl;
   String? _lastLoginError;
   String? _lastRegisterError;
+  String? _lastDeletionRequestError;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -33,6 +34,7 @@ class AuthService extends ChangeNotifier {
   String? get userPhotoUrl => _userPhotoUrl;
   String? get lastLoginError => _lastLoginError;
   String? get lastRegisterError => _lastRegisterError;
+  String? get lastDeletionRequestError => _lastDeletionRequestError;
 
   // ── NIC decoding (unchanged logic) ──────────────────────────────────────
   Map<String, String> _decodeNIC(String nic) {
@@ -87,12 +89,10 @@ class AuthService extends ChangeNotifier {
       final decodedNIC = _decodeNIC(normalizedNic);
 
       // Reject registration if this NIC is already registered to an account.
-      final existing = await _db
-          .collection('users')
-          .where('nic', isEqualTo: normalizedNic)
-          .limit(1)
-          .get();
-      if (existing.docs.isNotEmpty) {
+      // A direct doc-ID lookup (rather than a field query) so it works under
+      // a rule that only allows `get`, not `list`, before the user is signed in.
+      final existingIndex = await _db.collection('nic_index').doc(normalizedNic).get();
+      if (existingIndex.exists) {
         _lastRegisterError = 'duplicate_nic';
         return false;
       }
@@ -116,6 +116,13 @@ class AuthService extends ChangeNotifier {
         'birthDate': decodedNIC['birthDate'],
         'gender': decodedNIC['gender'],
         'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Public NIC -> uid/email index so login can look up the email before
+      // the user is authenticated, without exposing the full profile.
+      await _db.collection('nic_index').doc(normalizedNic).set({
+        'uid': uid,
+        'email': email.trim(),
       });
 
       // Cache locally
@@ -197,16 +204,13 @@ class AuthService extends ChangeNotifier {
     if (nic.isEmpty || password.isEmpty) return false;
 
     try {
-      // Look up email by NIC in Firestore
-      final query = await _db
-          .collection('users')
-          .where('nic', isEqualTo: nic.toUpperCase())
-          .limit(1)
-          .get();
+      // Look up email by NIC via the public nic_index doc (a direct doc-ID
+      // lookup, since the user isn't signed in yet and can't query `users`).
+      final indexDoc = await _db.collection('nic_index').doc(nic.toUpperCase()).get();
 
       String email;
-      if (query.docs.isNotEmpty) {
-        email = query.docs.first.data()['email'] as String;
+      if (indexDoc.exists) {
+        email = indexDoc.data()!['email'] as String;
       } else {
         // Fallback: try local cache
         return _loginOffline(nic, password);
@@ -550,27 +554,40 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> submitAccountDeletionRequest({String? reason}) async {
+    _lastDeletionRequestError = null;
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return false;
+    if (uid == null) {
+      _lastDeletionRequestError = 'not_signed_in';
+      return false;
+    }
 
-    final existing = await getAccountDeletionRequestStatus();
-    if (existing != null && existing['status'] == 'pending') return false;
+    try {
+      final existing = await getAccountDeletionRequestStatus();
+      if (existing != null && existing['status'] == 'pending') {
+        _lastDeletionRequestError = 'already_pending';
+        return false;
+      }
 
-    await _db.collection('account_deletion_requests').add({
-      'uid': uid,
-      'nic': _userNIC,
-      'name': _userName,
-      'email': _userEmail,
-      'reason': reason,
-      'status': 'pending',
-      'requestedAt': FieldValue.serverTimestamp(),
-      'reviewedBy': null,
-      'reviewedAt': null,
-      'rejectionReason': null,
-      'finalAction': null,
-      'finalActionAt': null,
-    });
-    return true;
+      await _db.collection('account_deletion_requests').add({
+        'uid': uid,
+        'nic': _userNIC,
+        'name': _userName,
+        'email': _userEmail,
+        'reason': reason,
+        'status': 'pending',
+        'requestedAt': FieldValue.serverTimestamp(),
+        'reviewedBy': null,
+        'reviewedAt': null,
+        'rejectionReason': null,
+        'finalAction': null,
+        'finalActionAt': null,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('submitAccountDeletionRequest failed: $e');
+      _lastDeletionRequestError = e.toString();
+      return false;
+    }
   }
 
   Future<void> finalizeAccountDeletion({
