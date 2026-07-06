@@ -1,6 +1,8 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService extends ChangeNotifier {
@@ -17,6 +19,7 @@ class AuthService extends ChangeNotifier {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get userName => _userName;
@@ -448,6 +451,25 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Uploads the given image bytes to Firebase Storage under this user's
+  /// UID (overwriting any previous photo) and saves the resulting download
+  /// link as the permanent profile photo, replacing the old one if present.
+  Future<bool> uploadProfilePhoto(Uint8List bytes) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    try {
+      final ref = _storage.ref().child('profile_pictures/$uid.jpg');
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await ref.getDownloadURL();
+      await updateProfilePhoto(url);
+      return true;
+    } catch (e) {
+      debugPrint('Profile photo upload failed: $e');
+      return false;
+    }
+  }
+
   Future<void> updateProfilePhoto(String? photoUrl) async {
     _userPhotoUrl = photoUrl;
 
@@ -464,6 +486,14 @@ class AuthService extends ChangeNotifier {
         await _db.collection('users').doc(uid).update({'photoURL': photoUrl});
       } catch (e) {
         debugPrint('Firestore updateProfilePhoto failed: $e');
+      }
+
+      if (photoUrl == null) {
+        try {
+          await _storage.ref().child('profile_pictures/$uid.jpg').delete();
+        } catch (e) {
+          debugPrint('Firebase Storage photo delete failed: $e');
+        }
       }
     }
 

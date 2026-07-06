@@ -35,10 +35,11 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
     setState(() => _isLoading = true);
     try {
       final bytes = await file.readAsBytes();
-      final base64Code = base64Encode(bytes);
 
-      // Store the base64 string in Firestore — no Storage upload needed
-      await authService.updateProfilePhoto(base64Code);
+      // Upload to Firebase Storage and save the resulting download link,
+      // replacing any previously saved photo.
+      final success = await authService.uploadProfilePhoto(bytes);
+      if (!success) throw Exception('Upload failed');
 
       if (mounted) setState(() => _isLoading = false);
       messenger.showSnackBar(
