@@ -127,8 +127,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
     } else if (mounted) {
+      final errorKey = switch (authService.lastRegisterError) {
+        'duplicate_nic' => 'nic_already_registered',
+        'duplicate_email' => 'email_already_registered',
+        _ => 'registration_failed',
+      };
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('registration_failed'.tr()), backgroundColor: AppColors.error),
+        SnackBar(content: Text(errorKey.tr()), backgroundColor: AppColors.error),
       );
     }
   }

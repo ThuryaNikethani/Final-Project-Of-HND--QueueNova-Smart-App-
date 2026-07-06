@@ -83,6 +83,8 @@
   "enter_valid_nic": "Please enter a valid NIC number",
   "registration_successful": "Registration successful!",
   "registration_failed": "Registration failed. Please try again.",
+  "nic_already_registered": "An account with this NIC number already exists. Please sign in instead.",
+  "email_already_registered": "An account with this email already exists. Please sign in instead.",
   "already_have_account": "Already have an account? ",
   "field_is_required": "{} is required",
 

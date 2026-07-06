@@ -83,6 +83,8 @@
   "enter_valid_nic": "කරුණාකර වලංගු ජා.හැ. අංකයක් ඇතුළු කරන්න",
   "registration_successful": "ලියාපදිංචිය සාර්ථකයි!",
   "registration_failed": "ලියාපදිංචිය අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
+  "nic_already_registered": "මෙම ජා.හැ. අංකය සහිත ගිණුමක් දැනටමත් පවතී. කරුණාකර පුරන්න.",
+  "email_already_registered": "මෙම විද්‍යුත් තැපෑල සහිත ගිණුමක් දැනටමත් පවතී. කරුණාකර පුරන්න.",
   "already_have_account": "දැනටමත් ගිණුමක් තිබේද? ",
   "field_is_required": "{} අවශ්‍යයි",
 

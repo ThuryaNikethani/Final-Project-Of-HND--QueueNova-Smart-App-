@@ -16,6 +16,7 @@ class AuthService extends ChangeNotifier {
   String? _userPhone;
   String? _userPhotoUrl;
   String? _lastLoginError;
+  String? _lastRegisterError;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -31,6 +32,7 @@ class AuthService extends ChangeNotifier {
   String? get userPhone => _userPhone;
   String? get userPhotoUrl => _userPhotoUrl;
   String? get lastLoginError => _lastLoginError;
+  String? get lastRegisterError => _lastRegisterError;
 
   // ── NIC decoding (unchanged logic) ──────────────────────────────────────
   Map<String, String> _decodeNIC(String nic) {
@@ -79,8 +81,21 @@ class AuthService extends ChangeNotifier {
     required String phone,
     required String password,
   }) async {
+    _lastRegisterError = null;
     try {
-      final decodedNIC = _decodeNIC(nic);
+      final normalizedNic = nic.toUpperCase();
+      final decodedNIC = _decodeNIC(normalizedNic);
+
+      // Reject registration if this NIC is already registered to an account.
+      final existing = await _db
+          .collection('users')
+          .where('nic', isEqualTo: normalizedNic)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) {
+        _lastRegisterError = 'duplicate_nic';
+        return false;
+      }
 
       // Create Firebase Auth account
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -94,7 +109,7 @@ class AuthService extends ChangeNotifier {
       await _db.collection('users').doc(uid).set({
         'uid': uid,
         'name': name,
-        'nic': nic.toUpperCase(),
+        'nic': normalizedNic,
         'email': email.trim(),
         'phone': phone,
         'role': 'citizen',
@@ -106,7 +121,7 @@ class AuthService extends ChangeNotifier {
       // Cache locally
       await _cacheUserData(
         name: name,
-        nic: nic.toUpperCase(),
+        nic: normalizedNic,
         email: email.trim(),
         phone: phone,
         birthDate: decodedNIC['birthDate']!,
@@ -114,7 +129,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _userName = name;
-      _userNIC = nic.toUpperCase();
+      _userNIC = normalizedNic;
       _userRole = 'citizen';
       _userBirthDate = decodedNIC['birthDate'];
       _userGender = decodedNIC['gender'];
@@ -126,8 +141,12 @@ class AuthService extends ChangeNotifier {
       return true;
     } on FirebaseAuthException catch (e) {
       debugPrint('Registration error: ${e.code} - ${e.message}');
-      // Always fall back to offline — including email-already-in-use so the
-      // user can re-register locally and have their details saved correctly.
+      if (e.code == 'email-already-in-use') {
+        // A real duplicate account — do not fall back to offline registration,
+        // that would let the same person re-register under the same identity.
+        _lastRegisterError = 'duplicate_email';
+        return false;
+      }
       return _registerOffline(name: name, nic: nic, email: email, phone: phone, password: password);
     } catch (e) {
       debugPrint('Unexpected registration error: $e');
@@ -143,17 +162,26 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     if (name.isEmpty || nic.isEmpty || email.isEmpty || password.isEmpty) return false;
-    final decodedNIC = _decodeNIC(nic);
+
+    final normalizedNic = nic.toUpperCase();
+    final prefs = await SharedPreferences.getInstance();
+    final cachedNic = prefs.getString('userNIC');
+    if (cachedNic != null && cachedNic.isNotEmpty && cachedNic == normalizedNic) {
+      _lastRegisterError = 'duplicate_nic';
+      return false;
+    }
+
+    final decodedNIC = _decodeNIC(normalizedNic);
     await _cacheUserData(
       name: name,
-      nic: nic.toUpperCase(),
+      nic: normalizedNic,
       email: email,
       phone: phone,
       birthDate: decodedNIC['birthDate']!,
       gender: decodedNIC['gender']!,
     );
     _userName = name;
-    _userNIC = nic.toUpperCase();
+    _userNIC = normalizedNic;
     _userRole = 'citizen';
     _userBirthDate = decodedNIC['birthDate'];
     _userGender = decodedNIC['gender'];
