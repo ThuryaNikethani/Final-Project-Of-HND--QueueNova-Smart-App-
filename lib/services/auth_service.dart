@@ -13,6 +13,7 @@ class AuthService extends ChangeNotifier {
   String? _userEmail;
   String? _userPhone;
   String? _userPhotoUrl;
+  String? _lastLoginError;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -26,6 +27,7 @@ class AuthService extends ChangeNotifier {
   String? get userEmail => _userEmail;
   String? get userPhone => _userPhone;
   String? get userPhotoUrl => _userPhotoUrl;
+  String? get lastLoginError => _lastLoginError;
 
   // ── NIC decoding (unchanged logic) ──────────────────────────────────────
   Map<String, String> _decodeNIC(String nic) {
@@ -191,6 +193,12 @@ class AuthService extends ChangeNotifier {
       final doc = await _db.collection('users').doc(uid).get();
       final data = doc.data();
 
+      if (data?['accountStatus'] == 'deactivated') {
+        await _auth.signOut();
+        _lastLoginError = 'account_deactivated';
+        return false;
+      }
+
       final prefs = await SharedPreferences.getInstance();
 
       // Filter out known bad defaults that old buggy code wrote to Firestore
@@ -221,6 +229,7 @@ class AuthService extends ChangeNotifier {
       _userPhone = phone;
       _userPhotoUrl = data?['photoURL'] as String? ?? prefs.getString('userPhotoUrl');
       _isAuthenticated = true;
+      _lastLoginError = null;
 
       // Cache address from Firestore so it's available on next load
       final fsAddress = data?['address'] as String?;
@@ -284,6 +293,10 @@ class AuthService extends ChangeNotifier {
       try {
         final doc = await _db.collection('users').doc(firebaseUser.uid).get();
         final data = doc.data();
+        if (data?['accountStatus'] == 'deactivated') {
+          await logout();
+          return;
+        }
         if (data != null) {
           final prefs = await SharedPreferences.getInstance();
 
@@ -454,6 +467,94 @@ class AuthService extends ChangeNotifier {
       }
     }
 
+    notifyListeners();
+  }
+
+  // ── Account deletion request/approval flow ────────────────────────────────
+  Future<Map<String, dynamic>?> getAccountDeletionRequestStatus() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return null;
+    // Sorted client-side (rather than orderBy in the query) to avoid needing
+    // a Firestore composite index just for this lookup.
+    final query = await _db
+        .collection('account_deletion_requests')
+        .where('uid', isEqualTo: uid)
+        .get();
+    if (query.docs.isEmpty) return null;
+    final docs = query.docs.toList()
+      ..sort((a, b) {
+        final aTime = a.data()['requestedAt'] as Timestamp?;
+        final bTime = b.data()['requestedAt'] as Timestamp?;
+        if (aTime == null || bTime == null) return 0;
+        return bTime.compareTo(aTime);
+      });
+    return {'id': docs.first.id, ...docs.first.data()};
+  }
+
+  Future<bool> submitAccountDeletionRequest({String? reason}) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    final existing = await getAccountDeletionRequestStatus();
+    if (existing != null && existing['status'] == 'pending') return false;
+
+    await _db.collection('account_deletion_requests').add({
+      'uid': uid,
+      'nic': _userNIC,
+      'name': _userName,
+      'email': _userEmail,
+      'reason': reason,
+      'status': 'pending',
+      'requestedAt': FieldValue.serverTimestamp(),
+      'reviewedBy': null,
+      'reviewedAt': null,
+      'rejectionReason': null,
+      'finalAction': null,
+      'finalActionAt': null,
+    });
+    return true;
+  }
+
+  Future<void> finalizeAccountDeletion({
+    required String requestId,
+    required bool permanentDelete,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    if (permanentDelete) {
+      await _db.collection('account_deletion_requests').doc(requestId).update({
+        'finalAction': 'deleted',
+        'finalActionAt': FieldValue.serverTimestamp(),
+      });
+      await _db.collection('users').doc(uid).delete();
+      try {
+        await _auth.currentUser?.delete();
+      } on FirebaseAuthException catch (_) {
+        // Re-authentication may be required by Firebase for this sensitive
+        // action; the account is already scrubbed from Firestore either way.
+      }
+    } else {
+      await _db.collection('account_deletion_requests').doc(requestId).update({
+        'finalAction': 'deactivated',
+        'finalActionAt': FieldValue.serverTimestamp(),
+      });
+      await _db.collection('users').doc(uid).update({'accountStatus': 'deactivated'});
+      await _auth.signOut();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    _isAuthenticated = false;
+    _userName = null;
+    _userNIC = null;
+    _userRole = null;
+    _userBirthDate = null;
+    _userGender = null;
+    _userEmail = null;
+    _userPhone = null;
+    _userPhotoUrl = null;
     notifyListeners();
   }
 }

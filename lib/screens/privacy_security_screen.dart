@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
+import 'package:queuenova_mobile/services/auth_service.dart';
+import 'package:queuenova_mobile/screens/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PrivacySecurityScreen extends StatefulWidget {
@@ -14,11 +17,20 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   bool isTwoFactorEnabled = false;
   bool isNotificationEnabled = true;
   bool isLocationEnabled = true;
+  Map<String, dynamic>? _deletionRequest;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadDeletionRequestStatus();
+  }
+
+  Future<void> _loadDeletionRequestStatus() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final status = await authService.getAccountDeletionRequestStatus();
+    if (!mounted) return;
+    setState(() => _deletionRequest = status);
   }
 
   Future<void> _loadSettings() async {
@@ -34,6 +46,204 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   Future<void> _saveSetting(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
+  }
+
+  String _deletionTileSubtitle() {
+    switch (_deletionRequest?['status']) {
+      case 'pending':
+        return 'Deletion request pending officer review';
+      case 'approved':
+        return 'Request approved — tap to delete or deactivate';
+      case 'rejected':
+        return 'Previous request rejected — tap for details';
+      default:
+        return 'Permanently delete your account and all data';
+    }
+  }
+
+  void _openDeleteAccountFlow() {
+    switch (_deletionRequest?['status']) {
+      case 'pending':
+        _showPendingDialog();
+        break;
+      case 'approved':
+        _showApprovedActionDialog();
+        break;
+      case 'rejected':
+        _showRejectedDialog();
+        break;
+      default:
+        _showRequestDeletionDialog();
+    }
+  }
+
+  void _showRequestDeletionDialog() {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your request will be reviewed by an officer before your account can be deleted or deactivated.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Reason (optional)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final authService = Provider.of<AuthService>(context, listen: false);
+              final messenger = ScaffoldMessenger.of(context);
+              Navigator.pop(dialogContext);
+              final reason = reasonController.text.trim();
+              await authService.submitAccountDeletionRequest(
+                reason: reason.isEmpty ? null : reason,
+              );
+              await _loadDeletionRequestStatus();
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Account deletion request submitted'),
+                  backgroundColor: AppColors.success,
+                ),
+              );
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Submit Request'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPendingDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Request Pending'),
+        content: const Text('Your account deletion request is awaiting review by an officer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectedDialog() {
+    final reason = _deletionRequest?['rejectionReason'] as String? ?? 'No reason provided';
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Request Rejected'),
+        content: Text('Your previous deletion request was rejected:\n\n$reason'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showRequestDeletionDialog();
+            },
+            child: const Text('Submit New Request'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApprovedActionDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Request Approved'),
+        content: const Text(
+          'An officer has approved your request. Choose how to proceed:',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _confirmFinalAction(permanentDelete: false);
+            },
+            child: const Text('Deactivate'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _confirmFinalAction(permanentDelete: true);
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmFinalAction({required bool permanentDelete}) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(permanentDelete ? 'Delete Account Permanently' : 'Deactivate Account'),
+        content: Text(
+          permanentDelete
+              ? 'This will permanently delete your account and all data. This cannot be undone.'
+              : 'This will deactivate your account and sign you out. Your data is kept but you will not be able to log in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final authService = Provider.of<AuthService>(context, listen: false);
+              final navigator = Navigator.of(context);
+              Navigator.pop(dialogContext);
+              await authService.finalizeAccountDeletion(
+                requestId: _deletionRequest!['id'] as String,
+                permanentDelete: permanentDelete,
+              );
+              navigator.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: Text(permanentDelete ? 'Delete' : 'Deactivate'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _changePassword() {
@@ -165,34 +375,9 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
             ),
             _buildActionTile(
               'Delete Account',
-              'Permanently delete your account and all data',
+              _deletionTileSubtitle(),
               Icons.delete_forever_rounded,
-              () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    title: const Text('Delete Account'),
-                    content: const Text('Are you sure you want to delete your account? This action cannot be undone.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Account deletion request submitted'), backgroundColor: AppColors.error),
-                          );
-                        },
-                        style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              _openDeleteAccountFlow,
               isDanger: true,
             ),
             

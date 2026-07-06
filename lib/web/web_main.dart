@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:queuenova_mobile/firebase_options.dart';
 import 'web_login.dart';
+import 'web_account_deletion_requests.dart';
 import 'web_components/web_sidebar.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_queue_management.dart';
@@ -21,7 +25,15 @@ import 'web_payment_reports.dart';
 import 'web_role_model.dart';
 import 'web_settings_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // The dashboard has its own demo login (web_login.dart) and doesn't
+  // otherwise use Firebase Auth — sign in anonymously purely so Firestore
+  // security rules requiring request.auth != null are satisfied.
+  if (FirebaseAuth.instance.currentUser == null) {
+    await FirebaseAuth.instance.signInAnonymously();
+  }
   runApp(const WebQueueNovaApp());
 }
 
@@ -198,6 +210,12 @@ class _WebDashboardState extends State<WebDashboard> {
         'permission': 'document_approval',
         'label': 'Document Approval',
         'icon': Icons.rate_review
+      },
+      {
+        'widget': WebAccountDeletionRequests(officerName: widget.userName),
+        'permission': 'account_deletion_requests',
+        'label': 'Account Deletion Requests',
+        'icon': Icons.person_remove
       },
       {
         'widget': const WebAppointments(),
