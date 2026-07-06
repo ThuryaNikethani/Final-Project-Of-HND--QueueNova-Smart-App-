@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
+import 'package:queuenova_mobile/services/image_moderation_service.dart';
 
 class EditProfilePictureScreen extends StatefulWidget {
   const EditProfilePictureScreen({super.key});
@@ -35,6 +36,22 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
     setState(() => _isLoading = true);
     try {
       final bytes = await file.readAsBytes();
+
+      // Block anything flagged as inappropriate before it's ever uploaded.
+      final moderation = await ImageModerationService.checkImage(bytes);
+      if (!moderation.safe) {
+        if (mounted) setState(() => _isLoading = false);
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This photo looks inappropriate and cannot be used as your profile picture. Please choose another one.',
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
 
       // Upload to Firebase Storage and save the resulting download link,
       // replacing any previously saved photo.
