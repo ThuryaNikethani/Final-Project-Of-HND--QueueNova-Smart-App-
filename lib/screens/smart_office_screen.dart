@@ -18,7 +18,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
   static const List<Map<String, dynamic>> _staticOffices = [
     {
       'name': 'Colombo Divisional Secretariat',
-      'address': 'Colombo 01',
+      'address': 'Dam Street, Colombo 12',
       'distance': '2.5 km',
       'officeId': 'Divisional Secretariat - Colombo',
     },
@@ -29,25 +29,25 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'officeId': 'RMV - Kiribathgoda',
     },
     {
-      'name': 'Nugegoda Divisional Secretariat',
-      'address': 'Nugegoda',
+      'name': 'Sri Jayawardanapura Kotte Divisional Secretariat',
+      'address': '341/3, Kotte Road, Rajagiriya',
       'distance': '6.5 km',
       'officeId': 'Divisional Secretariat - Nugegoda',
     },
     {
       'name': 'RMV - Werahera',
-      'address': 'Werahera, Biyagama',
+      'address': 'Department of Motor Traffic Road, Boralesgamuwa',
       'distance': '15.3 km',
       'officeId': 'RMV - Werahera',
     },
     {
       'name': 'Passport Office - Battaramulla',
-      'address': 'Battaramulla',
+      'address': 'Suhurupaya, Sri Subuthipura Road, Battaramulla',
       'distance': '8.2 km',
       'officeId': 'Passport Office - Battaramulla',
     },
     {
-      'name': 'Kandy Divisional Secretariat',
+      'name': 'Kandy Four Gravets & Gangawata Korale Divisional Secretariat',
       'address': 'Kandy',
       'distance': '115 km',
       'officeId': 'Divisional Secretariat - Kandy',
