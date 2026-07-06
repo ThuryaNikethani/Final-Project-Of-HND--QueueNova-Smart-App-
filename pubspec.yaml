@@ -51,6 +51,7 @@ dependencies:
   # Utilities
   intl: ^0.20.2
   connectivity_plus: ^5.0.2
+  url_launcher: ^6.3.0
 
   # Localization
   flutter_localizations:

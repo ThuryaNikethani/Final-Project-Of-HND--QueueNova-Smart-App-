@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
 import 'package:queuenova_mobile/services/ml_prediction_service.dart';
@@ -119,6 +120,20 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
         return AppColors.error;
       default:
         return AppColors.grey;
+    }
+  }
+
+  Future<void> _openDirections(BuildContext context, Map<String, dynamic> office) async {
+    final destination = Uri.encodeComponent('${office['name']}, ${office['address']}, Sri Lanka');
+    final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$destination');
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('could_not_open_maps'.tr()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -350,14 +365,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('directions_coming_soon'.tr()),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
+                  onPressed: () => _openDirections(context, office),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.grey),
                     shape: RoundedRectangleBorder(
