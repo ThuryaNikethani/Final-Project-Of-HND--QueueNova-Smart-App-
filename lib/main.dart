@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/firebase_options.dart';
 import 'package:queuenova_mobile/screens/splash_screen.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
+import 'package:queuenova_mobile/services/push_notification_service.dart';
 import 'package:queuenova_mobile/providers/language_provider.dart';
 
 void main() async {
@@ -19,6 +21,8 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Initialize Stripe (not supported on web)
   if (!kIsWeb) {

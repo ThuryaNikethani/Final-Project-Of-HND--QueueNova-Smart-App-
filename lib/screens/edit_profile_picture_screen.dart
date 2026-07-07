@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -38,7 +39,9 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       final bytes = await file.readAsBytes();
 
       // Block anything flagged as inappropriate before it's ever uploaded.
-      final moderation = await ImageModerationService.checkImage(bytes);
+      // Bounded so a slow/unreachable moderation service can't hang the UI.
+      final moderation = await ImageModerationService.checkImage(bytes)
+          .timeout(const Duration(seconds: 12), onTimeout: () => const ModerationResult(safe: true, checked: false));
       if (!moderation.safe) {
         if (mounted) setState(() => _isLoading = false);
         messenger.showSnackBar(
@@ -54,8 +57,9 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       }
 
       // Upload to Firebase Storage and save the resulting download link,
-      // replacing any previously saved photo.
-      final success = await authService.uploadProfilePhoto(bytes);
+      // replacing any previously saved photo. Bounded so a stuck upload
+      // always resolves to a visible error instead of spinning forever.
+      final success = await authService.uploadProfilePhoto(bytes).timeout(const Duration(seconds: 30));
       if (!success) throw Exception('Upload failed');
 
       if (mounted) setState(() => _isLoading = false);
@@ -67,6 +71,16 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
         ),
       );
       navigator.pop(true);
+    } on TimeoutException {
+      debugPrint('Profile picture upload timed out');
+      if (mounted) setState(() => _isLoading = false);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Upload timed out. Check your connection and try again.'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       debugPrint('Profile picture save failed: $e');
       if (mounted) setState(() => _isLoading = false);
@@ -104,16 +118,28 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
               final navigator = Navigator.of(context);
 
               setState(() => _isLoading = true);
-              await authService.updateProfilePhoto(null);
-              if (mounted) setState(() => _isLoading = false);
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text('Profile picture removed'),
-                  backgroundColor: AppColors.warning,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-              navigator.pop(true);
+              try {
+                await authService.updateProfilePhoto(null).timeout(const Duration(seconds: 15));
+                if (mounted) setState(() => _isLoading = false);
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Profile picture removed'),
+                    backgroundColor: AppColors.warning,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                navigator.pop(true);
+              } catch (e) {
+                debugPrint('Profile picture removal failed: $e');
+                if (mounted) setState(() => _isLoading = false);
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to remove photo. Please try again.'),
+                    backgroundColor: AppColors.error,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('Remove'),

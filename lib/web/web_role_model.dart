@@ -24,6 +24,7 @@ class RolePermissions {
       'payment_reports',
       'document_management',  // ← ADDED
       'account_deletion_requests',
+      'notification_delivery_log',
     ],
     UserRole.queueManager: [
       'dashboard',
@@ -35,6 +36,7 @@ class RolePermissions {
       'service_processing',
       'document_management',
       'account_deletion_requests',
+      'notification_delivery_log',
     ],
     UserRole.reception: [
       'dashboard',

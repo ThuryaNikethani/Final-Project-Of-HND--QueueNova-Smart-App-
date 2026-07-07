@@ -78,6 +78,30 @@ class AppointmentService {
     // Mirror to PostgreSQL so the web dashboard can see citizen bookings.
     // Fire-and-forget — failure never blocks the citizen.
     _mirrorToPostgres(appointment);
+
+    // Notify reception staff (the role that manages the Appointments screen).
+    // Fire-and-forget — failure never blocks the citizen.
+    _notifyStaffOfNewAppointment(appointment);
+  }
+
+  static Future<void> _notifyStaffOfNewAppointment(AppointmentModel appointment) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('userName') ?? 'A citizen';
+      final dateStr = '${appointment.date.day}/${appointment.date.month}/${appointment.date.year}';
+      await _db.collection('staff_notifications').add({
+        'title': 'New Appointment Booked',
+        'message': '$name has booked a ${appointment.service} appointment at ${appointment.office} on $dateStr at ${appointment.time}.',
+        'type': 'appointment',
+        'action': 'View Appointment',
+        'targetRoles': const ['reception'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyStaffOfNewAppointment failed: $e');
+    }
   }
 
   static Future<void> _mirrorToPostgres(AppointmentModel a) async {

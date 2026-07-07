@@ -2,6 +2,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+/// Outcome of a send (SMS/push) request, kept detailed enough to write an
+/// audit log entry even on failure.
+class SendResult {
+  final bool success;
+  final String? error;
+  const SendResult(this.success, [this.error]);
+}
+
 /// HTTP client for the QueueNova Node.js/PostgreSQL backend.
 /// Every method falls back silently on error so existing in-memory state
 /// still works when the server is not running.
@@ -632,6 +640,66 @@ class WebApiService {
       debugPrint('WebApiService.deleteNotification error: $e');
     }
     return false;
+  }
+
+  // ── SMS ─────────────────────────────────────────────────────────────────────
+
+  static const String _smsBase = 'http://localhost:3000/api/sms';
+
+  /// Send an SMS via Twilio (server-side, delivered regardless of whether the
+  /// citizen's app is open). [phone] must be in E.164 format (e.g. `+94771234567`).
+  static Future<SendResult> sendSms(String phone, String message) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_smsBase/send'),
+            headers: _headers,
+            body: jsonEncode({'phone': phone, 'message': message}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) return const SendResult(true);
+      final error = _extractError(res.body) ?? 'HTTP ${res.statusCode}';
+      debugPrint('WebApiService.sendSms failed: $error');
+      return SendResult(false, error);
+    } catch (e) {
+      debugPrint('WebApiService.sendSms error: $e');
+      return SendResult(false, e.toString());
+    }
+  }
+
+  static String? _extractError(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) return decoded['error'] as String?;
+    } catch (_) {}
+    return null;
+  }
+
+  // ── Push Notifications (FCM) ─────────────────────────────────────────────────
+
+  static const String _pushBase = 'http://localhost:3000/api/push';
+
+  /// Send a push notification to one or more FCM device tokens, delivered
+  /// regardless of whether the app is open (foreground, backgrounded, or
+  /// closed on mobile; open in another tab or closed on web).
+  static Future<SendResult> sendPush(List<String> tokens, String title, String body) async {
+    if (tokens.isEmpty) return const SendResult(false, 'no device tokens');
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_pushBase/send'),
+            headers: _headers,
+            body: jsonEncode({'tokens': tokens, 'title': title, 'body': body}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) return const SendResult(true);
+      final error = _extractError(res.body) ?? 'HTTP ${res.statusCode}';
+      debugPrint('WebApiService.sendPush failed: $error');
+      return SendResult(false, error);
+    } catch (e) {
+      debugPrint('WebApiService.sendPush error: $e');
+      return SendResult(false, e.toString());
+    }
   }
 
   // ── ML Predictions ────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'web_api_service.dart';
 
 class WebAccountDeletionRequests extends StatefulWidget {
   final String officerName;
@@ -69,6 +70,54 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    final userData = (await FirebaseFirestore.instance.collection('users').doc(uid).get()).data();
+
+    final phone = _normalizePhone(userData?['phone'] as String?);
+    if (phone != null) {
+      final result = await WebApiService.sendSms(phone, '$title: $message');
+      await _logDelivery(uid: uid, channel: 'sms', recipient: phone, title: title, message: message, result: result);
+    }
+
+    final tokens = (userData?['fcmTokens'] as List?)?.cast<String>();
+    if (tokens != null && tokens.isNotEmpty) {
+      final result = await WebApiService.sendPush(tokens, title, message);
+      await _logDelivery(uid: uid, channel: 'push', recipient: '${tokens.length} device(s)', title: title, message: message, result: result);
+    }
+  }
+
+  /// Audit trail of every SMS/push send attempt, so staff can tell whether a
+  /// citizen actually received a notification rather than just seeing it was
+  /// queued.
+  Future<void> _logDelivery({
+    required String uid,
+    required String channel,
+    required String recipient,
+    required String title,
+    required String message,
+    required SendResult result,
+  }) async {
+    await FirebaseFirestore.instance.collection('notification_delivery_logs').add({
+      'uid': uid,
+      'channel': channel,
+      'recipient': recipient,
+      'title': title,
+      'message': message,
+      'success': result.success,
+      'error': result.error,
+      'context': 'account_deletion',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Normalizes a Sri Lankan phone number (e.g. `0771234567` or `94771234567`)
+  /// to the E.164 format (`+94771234567`) Twilio requires.
+  String? _normalizePhone(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('0')) digits = '94${digits.substring(1)}';
+    if (!digits.startsWith('94')) digits = '94$digits';
+    return '+$digits';
   }
 
   String _formatTimestamp(Timestamp? ts) {

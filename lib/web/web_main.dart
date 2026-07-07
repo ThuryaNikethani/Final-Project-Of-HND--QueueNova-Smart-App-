@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/firebase_options.dart';
 import 'web_login.dart';
 import 'web_account_deletion_requests.dart';
+import 'web_notification_delivery_log.dart';
 import 'web_components/web_sidebar.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_queue_management.dart';
@@ -157,12 +160,14 @@ class WebDashboard extends StatefulWidget {
   final UserRole userRole;
   final String userName;
   final String userEmail;
+  final String userId;
 
   const WebDashboard({
     super.key,
     required this.userRole,
     required this.userName,
     required this.userEmail,
+    required this.userId,
   });
 
   @override
@@ -183,7 +188,7 @@ class _WebDashboardState extends State<WebDashboard> {
     final permissions = RolePermissions.permissions[widget.userRole] ?? [];
     final allItems = [
       {
-        'widget': const DashboardHome(),
+        'widget': DashboardHome(userRole: widget.userRole, staffId: widget.userId),
         'permission': 'dashboard',
         'label': 'Dashboard',
         'icon': Icons.dashboard
@@ -217,6 +222,12 @@ class _WebDashboardState extends State<WebDashboard> {
         'permission': 'account_deletion_requests',
         'label': 'Account Deletion Requests',
         'icon': Icons.person_remove
+      },
+      {
+        'widget': const WebNotificationDeliveryLog(),
+        'permission': 'notification_delivery_log',
+        'label': 'Notification Delivery Log',
+        'icon': Icons.mark_email_read
       },
       {
         'widget': const WebAppointments(),
@@ -345,96 +356,115 @@ class _WebDashboardState extends State<WebDashboard> {
 }
 
 class DashboardHome extends StatefulWidget {
-  const DashboardHome({super.key});
+  final UserRole userRole;
+  final String staffId;
+
+  const DashboardHome({super.key, required this.userRole, required this.staffId});
 
   @override
   State<DashboardHome> createState() => _DashboardHomeState();
 }
 
 class _DashboardHomeState extends State<DashboardHome> {
-  int _notificationCount = 4;
+  int _notificationCount = 0;
   List<Map<String, dynamic>> _notifications = [];
+  StreamSubscription<QuerySnapshot>? _notifSub;
 
   @override
   void initState() {
     super.initState();
-    _loadNotifications();
-  }
-
-  void _loadNotifications() {
-    _notifications = [
-      {
-        'title': 'New Appointment Booked',
-        'message':
-            'K.N.T. Nikethani has booked a Passport Renewal appointment for tomorrow at 10:30 AM.',
-        'time': '2 min ago',
-        'read': false,
-        'type': 'appointment',
-        'action': 'View Appointment',
-        'service': 'Passport Renewal',
-        'office': 'Divisional Secretariat - Colombo',
-        'datetime': '26 May 2026, 10:30 AM',
-        'token': 'A-025',
-      },
-      {
-        'title': 'Your Token is Called',
-        'message':
-            'Token A-024 is now being served at Counter 3. Please proceed.',
-        'time': '5 min ago',
-        'read': false,
-        'type': 'queue',
-        'action': 'View Queue',
-        'token': 'A-024',
-        'counter': 'Counter 3',
-        'waitTime': '0 minutes',
-        'ahead': '0 people',
-      },
-      {
-        'title': 'Document Uploaded',
-        'message':
-            'A new document (NIC Copy.pdf) has been uploaded and requires your review.',
-        'time': '15 min ago',
-        'read': false,
-        'type': 'document',
-        'action': 'Review Document',
-        'docName': 'NIC Copy.pdf',
-        'docStatus': 'Pending Review',
-        'uploadedBy': 'Citizen User',
-        'submittedOn': '25 May 2026',
-      },
-      {
-        'title': 'System Backup Completed',
-        'message': 'Daily system backup completed successfully at 02:00 AM.',
-        'time': '2 hours ago',
-        'read': true,
-        'type': 'system',
-        'action': 'View Backup',
-      },
-    ];
-    _updateNotificationCount();
-  }
-
-  void _updateNotificationCount() {
-    setState(() {
-      _notificationCount =
-          _notifications.where((n) => n['read'] == false).length;
+    // Sorted client-side (rather than orderBy in the query) to avoid needing
+    // a Firestore composite index for an arrayContains + orderBy combination.
+    _notifSub = FirebaseFirestore.instance
+        .collection('staff_notifications')
+        .where('targetRoles', arrayContains: widget.userRole.name)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      final docs = snapshot.docs.toList()
+        ..sort((a, b) {
+          final aTime = a.data()['createdAt'] as Timestamp?;
+          final bTime = b.data()['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+      setState(() {
+        _notifications = docs
+            .map((d) => _toDisplayNotif(d.id, d.data()))
+            .where((n) => !(n['dismissed'] as bool))
+            .take(200)
+            .toList();
+        _notificationCount = _notifications.where((n) => n['read'] == false).length;
+      });
     });
   }
 
-  void _addTestNotification() {
-    final testNotification = {
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _toDisplayNotif(String id, Map<String, dynamic> data) {
+    final readBy = (data['readBy'] as List?)?.cast<String>() ?? const [];
+    final dismissedBy = (data['dismissedBy'] as List?)?.cast<String>() ?? const [];
+    final createdAt = data['createdAt'] as Timestamp?;
+    return {
+      'id': id,
+      'title': data['title'] as String? ?? '',
+      'message': data['message'] as String? ?? '',
+      'type': data['type'] as String? ?? 'system',
+      'action': data['action'] as String? ?? 'View Details',
+      'time': _relativeTime(createdAt?.toDate()),
+      'read': readBy.contains(widget.staffId),
+      'dismissed': dismissedBy.contains(widget.staffId),
+    };
+  }
+
+  String _relativeTime(DateTime? time) {
+    if (time == null) return '—';
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
+    if (diff.inDays < 7) return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+    return '${time.day}/${time.month}/${time.year}';
+  }
+
+  Future<void> _markAsRead(String id) async {
+    await FirebaseFirestore.instance.collection('staff_notifications').doc(id).set({
+      'readBy': FieldValue.arrayUnion([widget.staffId]),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _markAllAsRead() async {
+    final batch = FirebaseFirestore.instance.batch();
+    for (final n in _notifications.where((n) => n['read'] == false)) {
+      batch.set(
+        FirebaseFirestore.instance.collection('staff_notifications').doc(n['id'] as String),
+        {'readBy': FieldValue.arrayUnion([widget.staffId])},
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All notifications marked as read'), backgroundColor: Colors.green),
+    );
+  }
+
+  Future<void> _addTestNotification() async {
+    await FirebaseFirestore.instance.collection('staff_notifications').add({
       'title': 'Test Notification',
-      'message':
-          'This is a test notification to verify your settings are working correctly.',
-      'time': 'Just now',
-      'read': false,
+      'message': 'This is a test notification to verify your settings are working correctly.',
       'type': 'system',
       'action': 'View Details',
-    };
-    setState(() {
-      _notifications.insert(0, testNotification);
-      _updateNotificationCount();
+      'targetRoles': [widget.userRole.name],
+      'readBy': <String>[],
+      'dismissedBy': <String>[],
+      'createdAt': FieldValue.serverTimestamp(),
     });
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Test notification sent successfully!'),
@@ -484,20 +514,13 @@ class _DashboardHomeState extends State<DashboardHome> {
                           const Spacer(),
                           if (_notificationCount > 0)
                             TextButton(
-                              onPressed: () {
+                              onPressed: () async {
+                                await _markAllAsRead();
                                 setDialogState(() {
                                   for (var n in notificationsCopy) {
                                     n['read'] = true;
                                   }
-                                  _notifications = notificationsCopy;
-                                  _updateNotificationCount();
                                 });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'All notifications marked as read'),
-                                      backgroundColor: Colors.green),
-                                );
                               },
                               child: const Text('Mark all read',
                                   style: TextStyle(color: Colors.white)),
@@ -528,10 +551,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                                 return GestureDetector(
                                   onTap: () {
                                     if (!isRead) {
+                                      _markAsRead(notif['id'] as String);
                                       setDialogState(() {
                                         notif['read'] = true;
-                                        _notifications = notificationsCopy;
-                                        _updateNotificationCount();
                                       });
                                     }
                                     Navigator.pop(context);

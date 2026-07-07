@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_api_service.dart';
 
@@ -114,6 +115,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
         queueList = rows.map((r) => {
           'token': r['token'] ?? '',
           'citizen': r['citizen_name'] ?? '',
+          'citizen_nic': r['citizen_nic'],
           'service': r['service'] ?? '',
           'status': r['status'] ?? 'waiting',
           'waitTime': r['wait_time'] ?? '-- min',
@@ -131,6 +133,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
         emergencyQueue = emergency.map((e) => {
           'token': e['token'] ?? '',
           'citizen': e['citizen_name'] ?? '',
+          'citizen_nic': e['citizen_nic'],
           'service': e['reason'] ?? '',
           'status': e['status'] ?? 'priority',
           'waitTime': '-- min',
@@ -143,6 +146,32 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
   Color getPaymentColor(String paymentStatus) {
     return paymentStatus == 'paid' ? const Color(0xFF10B981) : const Color(0xFFF59E0B);
+  }
+
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection (the same one the citizen app's Notifications screen reads
+  /// live). Looks the uid up through `nic_index`, same as login does.
+  Future<void> _notifyCitizenByNic({
+    required String? nic,
+    required String title,
+    required String message,
+  }) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'queue',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenByNic error: $e');
+    }
   }
 
   void _callNextToken() {
@@ -177,6 +206,12 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
     // Persist to backend
     WebApiService.callNext(selectedOffice, 'Queue Officer');
+
+    _notifyCitizenByNic(
+      nic: nextToken['citizen_nic'] as String?,
+      title: 'Your Token is Called',
+      message: 'Token ${nextToken['token']} is now being served at Counter ${nextToken['counter']}. Please proceed.',
+    );
   }
 
   void _completeService(Map<String, dynamic> token) {
@@ -283,6 +318,12 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
               );
               // Persist to backend
               WebApiService.processEmergency(tokenStr, 'Queue Officer');
+
+              _notifyCitizenByNic(
+                nic: emergencyToken['citizen_nic'] as String?,
+                title: 'Priority Token Called',
+                message: 'Your priority token $tokenStr is now being processed immediately.',
+              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Process Now'),

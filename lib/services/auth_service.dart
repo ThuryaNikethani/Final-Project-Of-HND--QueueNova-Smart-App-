@@ -1,9 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:queuenova_mobile/services/push_notification_service.dart';
 
 class AuthService extends ChangeNotifier {
   bool _isAuthenticated = false;
@@ -21,7 +22,6 @@ class AuthService extends ChangeNotifier {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get userName => _userName;
@@ -143,6 +143,8 @@ class AuthService extends ChangeNotifier {
       _userEmail = email.trim();
       _userPhone = phone;
       _isAuthenticated = true;
+
+      await PushNotificationService.instance.registerToken(collection: 'users', docId: uid);
 
       notifyListeners();
       return true;
@@ -270,6 +272,8 @@ class AuthService extends ChangeNotifier {
       final fsAddress = data?['address'] as String?;
       if (fsAddress != null) await prefs.setString('userAddress', fsAddress);
 
+      await PushNotificationService.instance.registerToken(collection: 'users', docId: uid);
+
       notifyListeners();
       return true;
     } on FirebaseAuthException catch (e) {
@@ -363,6 +367,10 @@ class AuthService extends ChangeNotifier {
             birthDate: _userBirthDate ?? '',
             gender: _userGender ?? '',
           );
+
+          await PushNotificationService.instance
+              .registerToken(collection: 'users', docId: firebaseUser.uid);
+
           notifyListeners();
           return;
         }
@@ -386,6 +394,11 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      await PushNotificationService.instance.unregisterToken(collection: 'users', docId: uid);
+    }
+
     try {
       await _auth.signOut();
     } catch (_) {}
@@ -483,31 +496,28 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Uploads the given image bytes to Firebase Storage under this user's
-  /// UID (overwriting any previous photo) and saves the resulting download
-  /// link as the permanent profile photo, replacing the old one if present.
+  /// Encodes the given image bytes and saves them directly on the user's
+  /// Firestore profile document, replacing any previous photo. No separate
+  /// file storage involved — just one Firestore write.
   Future<bool> uploadProfilePhoto(Uint8List bytes) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return false;
 
     try {
-      final ref = _storage.ref().child('profile_pictures/$uid.jpg');
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      final url = await ref.getDownloadURL();
-      await updateProfilePhoto(url);
+      await updateProfilePhoto(base64Encode(bytes));
       return true;
     } catch (e) {
-      debugPrint('Profile photo upload failed: $e');
+      debugPrint('Profile photo save failed: $e');
       return false;
     }
   }
 
-  Future<void> updateProfilePhoto(String? photoUrl) async {
-    _userPhotoUrl = photoUrl;
+  Future<void> updateProfilePhoto(String? photoData) async {
+    _userPhotoUrl = photoData;
 
     final prefs = await SharedPreferences.getInstance();
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      await prefs.setString('userPhotoUrl', photoUrl);
+    if (photoData != null && photoData.isNotEmpty) {
+      await prefs.setString('userPhotoUrl', photoData);
     } else {
       await prefs.remove('userPhotoUrl');
     }
@@ -515,17 +525,9 @@ class AuthService extends ChangeNotifier {
     final uid = _auth.currentUser?.uid;
     if (uid != null) {
       try {
-        await _db.collection('users').doc(uid).update({'photoURL': photoUrl});
+        await _db.collection('users').doc(uid).update({'photoURL': photoData});
       } catch (e) {
         debugPrint('Firestore updateProfilePhoto failed: $e');
-      }
-
-      if (photoUrl == null) {
-        try {
-          await _storage.ref().child('profile_pictures/$uid.jpg').delete();
-        } catch (e) {
-          debugPrint('Firebase Storage photo delete failed: $e');
-        }
       }
     }
 
@@ -582,6 +584,18 @@ class AuthService extends ChangeNotifier {
         'finalAction': null,
         'finalActionAt': null,
       });
+
+      await _db.collection('staff_notifications').add({
+        'title': 'New Account Deletion Request',
+        'message': '${_userName ?? 'A citizen'} (${_userNIC ?? uid}) has requested account deletion.',
+        'type': 'account_deletion',
+        'action': 'View Details',
+        'targetRoles': const ['admin', 'serviceProcessor'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
       return true;
     } catch (e) {
       debugPrint('submitAccountDeletionRequest failed: $e');
