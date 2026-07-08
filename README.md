@@ -117,6 +117,9 @@ flutter build apk --release
 flutter build ios --release
 ```
 
+## Authors
+Thurya Nikethani(Thinu)
+
 ## License
 
 This project is developed as part of a Higher Diploma final project at NIBM City University.
