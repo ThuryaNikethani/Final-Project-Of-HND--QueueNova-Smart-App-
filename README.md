@@ -118,7 +118,7 @@ flutter build ios --release
 ```
 
 ## Authors
-Thurya Nikethani(Thinu)
+[Thurya Nikethani(Thinu)](https://github.com/ThuryaNikethani)
 
 ## License
 
