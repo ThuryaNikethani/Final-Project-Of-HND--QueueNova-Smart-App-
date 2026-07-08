@@ -119,4 +119,4 @@ flutter build ios --release
 
 ## License
 
-This project is developed as part of a Higher Diploma final project.
+This project is developed as part of a Higher Diploma final project at NIBM City University.
