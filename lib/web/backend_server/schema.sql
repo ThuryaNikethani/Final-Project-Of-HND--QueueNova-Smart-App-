@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMP    DEFAULT NOW()
 );
 
+-- Citizen feedback / satisfaction ratings
+CREATE TABLE IF NOT EXISTS feedback (
+  id           SERIAL PRIMARY KEY,
+  citizen_name VARCHAR(255),
+  citizen_nic  VARCHAR(20),
+  service      VARCHAR(255),
+  rating       INTEGER      NOT NULL,
+  comment      TEXT,
+  created_at   TIMESTAMP    DEFAULT NOW()
+);
+
 -- Office operating hours & queue limits
 CREATE TABLE IF NOT EXISTS office_settings (
   id         SERIAL PRIMARY KEY,

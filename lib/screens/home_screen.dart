@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'package:queuenova_mobile/config/app_colors.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
 import 'package:queuenova_mobile/screens/profile_screen.dart';
 import 'package:queuenova_mobile/screens/bookings_screen.dart';
 import 'package:queuenova_mobile/screens/queue_tab_screen.dart';
@@ -84,6 +87,112 @@ class HomeContent extends StatefulWidget {
 class _HomeContentState extends State<HomeContent> {
   final PageController _pageController = PageController();
   int _currentActionIndex = 0;
+
+  Map<String, dynamic>? _queuePosition;
+  socket_io.Socket? _queueSocket;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQueuePosition();
+    _queueSocket = QueueStatusService.connect(onQueueChanged: _loadQueuePosition);
+  }
+
+  @override
+  void dispose() {
+    _queueSocket?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQueuePosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nic = prefs.getString('userNIC') ?? '';
+    final position = await QueueStatusService.getMyQueuePosition(nic);
+    if (!mounted) return;
+    setState(() => _queuePosition = position);
+  }
+
+  Widget _buildCurrentTokenCard() {
+    final position = _queuePosition!;
+    final bool isServing = position['status'] == 'serving';
+    final int ahead = position['position'] as int? ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.queue_play_next_rounded,
+              color: AppColors.primaryBlue,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'current_token_label'.tr(),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  position['token'] as String? ?? '—',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  isServing ? '0' : '$ahead',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                Text(
+                  isServing ? 'now_serving'.tr() : 'ahead'.tr(),
+                  style: const TextStyle(
+                    fontSize: 8,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   final List<Map<String, dynamic>> quickActions = [
     {'titleKey': 'book_appointment', 'subtitleKey': 'schedule_a_service', 'icon': Icons.calendar_month_rounded, 'color': const Color(0xFF1A56DB), 'screen': const BookAppointmentScreen()},
@@ -248,82 +357,7 @@ class _HomeContentState extends State<HomeContent> {
                           ],
                         ),
                         const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(
-                                  Icons.queue_play_next_rounded,
-                                  color: AppColors.primaryBlue,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'current_token_label'.tr(),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    const Text(
-                                      'A-024',
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: Column(
-                                  children: [
-                                    const Text(
-                                      '4',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primaryBlue,
-                                      ),
-                                    ),
-                                    Text(
-                                      'ahead'.tr(),
-                                      style: const TextStyle(
-                                        fontSize: 8,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        if (_queuePosition?['found'] == true) _buildCurrentTokenCard(),
                       ],
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../config/backend_config.dart';
 
 /// On-device queue wait time and crowd prediction model.
 ///
@@ -103,7 +104,7 @@ class MLPredictionService {
   };
 
   // ── Backend base URL (same as the Node.js server) ─────────────────────────
-  static const String _backendBase = 'http://localhost:3000/api';
+  static const String _backendBase = '${BackendConfig.baseUrl}/api';
 
   // ── Real Sri Lanka district populations — Department of Census & Statistics, 2012 ──
   static const Map<String, int> _districtPopulation = {

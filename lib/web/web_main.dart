@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'package:queuenova_mobile/firebase_options.dart';
+import 'web_api_service.dart';
+import 'web_session.dart';
 import 'web_login.dart';
 import 'web_account_deletion_requests.dart';
 import 'web_notification_delivery_log.dart';
@@ -45,14 +48,30 @@ void main() async {
       debugPrint('Anonymous sign-in failed (dashboard will still load): $e');
     }
   }
-  runApp(const WebQueueNovaApp());
+  // Restore a previously logged-in officer's session (if any) so a page
+  // refresh doesn't drop them back to the login screen — only the
+  // Logout button should do that.
+  final restoredSession = await WebSession.load();
+  debugPrint('[main] startup restoredSession = $restoredSession');
+  runApp(WebQueueNovaApp(restoredSession: restoredSession));
 }
 
 class WebQueueNovaApp extends StatelessWidget {
-  const WebQueueNovaApp({super.key});
+  final Map<String, dynamic>? restoredSession;
+
+  const WebQueueNovaApp({super.key, this.restoredSession});
 
   @override
   Widget build(BuildContext context) {
+    final session = restoredSession;
+    final Widget initialScreen = session != null
+        ? WebDashboard(
+            userRole: session['userRole'] as UserRole,
+            userName: session['userName'] as String,
+            userEmail: session['userEmail'] as String,
+            userId: session['staffId'] as String,
+          )
+        : const WebLogin();
     return MaterialApp(
       title: 'QueueNova Pulse',
       debugShowCheckedModeBanner: false,
@@ -149,7 +168,7 @@ class WebQueueNovaApp extends StatelessWidget {
           space: 16,
         ),
       ),
-      initialRoute: '/login',
+      home: initialScreen,
       routes: {
         '/login': (context) => const WebLogin(),
       },
@@ -189,7 +208,7 @@ class _WebDashboardState extends State<WebDashboard> {
     final permissions = RolePermissions.permissions[widget.userRole] ?? [];
     final allItems = [
       {
-        'widget': DashboardHome(userRole: widget.userRole, staffId: widget.userId),
+        'widget': DashboardHome(userRole: widget.userRole, staffId: widget.userId, userName: widget.userName),
         'permission': 'dashboard',
         'label': 'Dashboard',
         'icon': Icons.dashboard
@@ -365,8 +384,9 @@ class _WebDashboardState extends State<WebDashboard> {
 class DashboardHome extends StatefulWidget {
   final UserRole userRole;
   final String staffId;
+  final String userName;
 
-  const DashboardHome({super.key, required this.userRole, required this.staffId});
+  const DashboardHome({super.key, required this.userRole, required this.staffId, required this.userName});
 
   @override
   State<DashboardHome> createState() => _DashboardHomeState();
@@ -376,6 +396,13 @@ class _DashboardHomeState extends State<DashboardHome> {
   int _notificationCount = 0;
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<QuerySnapshot>? _notifSub;
+
+  Map<String, dynamic>? _stats;
+  List<Map<String, dynamic>> _activity = [];
+  int _pendingApprovals = 0;
+  int? _liveActiveUsers;
+  socket_io.Socket? _socket;
+  StreamSubscription<QuerySnapshot>? _approvalsSub;
 
   @override
   void initState() {
@@ -404,11 +431,150 @@ class _DashboardHomeState extends State<DashboardHome> {
         _notificationCount = _notifications.where((n) => n['read'] == false).length;
       });
     });
+
+    _loadDashboardData();
+
+    // Live count of pending account-deletion requests (Firestore is the
+    // source of truth for these, not Postgres) — a real snapshots()
+    // listener rather than a one-time fetch, so it updates the moment a
+    // request is filed or resolved elsewhere.
+    _approvalsSub = FirebaseFirestore.instance
+        .collection('account_deletion_requests')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      setState(() => _pendingApprovals = snapshot.docs.length);
+    }, onError: (_) {});
+
+    _socket = socket_io.io(
+      'http://localhost:3000',
+      socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+    );
+    _socket!.onConnect((_) {
+      _socket!.emit('register', {
+        'userId': widget.staffId,
+        'role': widget.userRole.name,
+        'name': widget.userName,
+      });
+    });
+    _socket!.on('queue_update', (_) => _loadDashboardData());
+    _socket!.on('appointment_update', (_) => _loadDashboardData());
+    _socket!.on('service_completed', (_) => _loadDashboardData());
+    _socket!.on('document_update', (_) => _loadDashboardData());
+    _socket!.on('feedback_update', (_) => _loadDashboardData());
+    // Fires on every audited action server-side (login, user management,
+    // office settings, etc.) — the catch-all for anything the domain-
+    // specific listeners above don't already cover.
+    _socket!.on('activity_logged', (_) => _loadDashboardData());
+    _socket!.on('active_users_changed', (data) {
+      if (!mounted) return;
+      final count = (data as Map)['count'] as int?;
+      if (count != null) setState(() => _liveActiveUsers = count);
+    });
+    _socket!.connect();
+  }
+
+  Future<void> _loadDashboardData() async {
+    final stats = await WebApiService.getDashboardStats();
+    final activity = await WebApiService.getDashboardActivity();
+    if (!mounted) return;
+    setState(() {
+      if (stats != null) _stats = stats;
+      _activity = activity;
+    });
+  }
+
+  String _statValue(String key, {String suffix = ''}) {
+    final v = _stats?[key];
+    if (v == null) return '—';
+    if (v is num) {
+      if (v == v.roundToDouble()) return '${v.toInt()}$suffix';
+      return '${v.toStringAsFixed(1)}$suffix';
+    }
+    return '$v$suffix';
+  }
+
+  (String, String, IconData) _activityDisplay(Map<String, dynamic> log) {
+    final action = log['action'] as String? ?? '';
+    final time = _relativeTime((log['created_at'] as String?) != null ? DateTime.tryParse(log['created_at'] as String) : null);
+    switch (action) {
+      case 'add_queue':
+        return ('User checked in', time, Icons.qr_code);
+      case 'call_next':
+        return ('Token called', time, Icons.notifications);
+      case 'book_appointment':
+        return ('New appointment booked', time, Icons.calendar_today);
+      case 'upload_document':
+        return ('Document uploaded', time, Icons.upload_file);
+      case 'complete_service':
+        return ('Service completed', time, Icons.check_circle);
+      case 'approve_document':
+        return ('Document approved', time, Icons.check_circle);
+      case 'reject_document':
+        return ('Document rejected', time, Icons.cancel);
+      case 'submit_feedback':
+        return ('Feedback submitted', time, Icons.star);
+      case 'login':
+        return ('Staff login', time, Icons.login);
+      case 'reassign_counter':
+        return ('Counter reassigned', time, Icons.swap_horiz);
+      case 'process_emergency':
+        return ('Emergency token processed', time, Icons.warning_rounded);
+      case 'add_emergency':
+        return ('Emergency added to queue', time, Icons.priority_high);
+      case 'cancel_queue':
+        return ('Queue token cancelled', time, Icons.cancel_outlined);
+      case 'create_user':
+        return ('Staff account created', time, Icons.person_add);
+      case 'update_user':
+        return ('Staff account updated', time, Icons.edit);
+      case 'delete_user':
+        return ('Staff account deleted', time, Icons.person_remove);
+      case 'update_user_status':
+        return ('Staff status updated', time, Icons.toggle_on);
+      case 'change_password':
+        return ('Password changed', time, Icons.lock_reset);
+      case 'update_office_settings':
+        return ('Office settings updated', time, Icons.settings);
+      default:
+        return (action.isEmpty ? 'Activity' : action.replaceAll('_', ' '), time, Icons.info_outline);
+    }
+  }
+
+  List<Widget> _buildActivityWidgets({required bool withGaps}) {
+    if (_activity.isEmpty) {
+      return const [
+        Text('No recent activity yet', style: TextStyle(color: Colors.grey, fontSize: 13)),
+      ];
+    }
+    final items = _activity.take(5).map(_activityDisplay).toList();
+    final widgets = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      if (i > 0 && withGaps) widgets.add(const SizedBox(height: 8));
+      final (title, time, icon) = items[i];
+      widgets.add(_buildActivityItem(title, time, icon));
+    }
+    return widgets;
+  }
+
+  List<Widget> _buildQuickStatWidgets() {
+    return [
+      _buildQuickStat("Today's Check-ins", _statValue('todaysCheckIns'), Icons.qr_code_scanner, Colors.blue),
+      const SizedBox(height: 12),
+      _buildQuickStat('Pending Approvals', '$_pendingApprovals', Icons.pending, Colors.orange),
+      const SizedBox(height: 12),
+      _buildQuickStat('Completed Services', _statValue('completedServices'), Icons.check_circle, Colors.green),
+      const SizedBox(height: 12),
+      _buildQuickStat('Active Users', _liveActiveUsers != null ? '$_liveActiveUsers' : _statValue('activeUsers'), Icons.people, Colors.purple),
+    ];
   }
 
   @override
   void dispose() {
     _notifSub?.cancel();
+    _approvalsSub?.cancel();
+    _socket?.dispose();
     super.dispose();
   }
 
@@ -942,7 +1108,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                 const SizedBox(width: 16),
                 PopupMenuButton<String>(
                   offset: const Offset(0, 45),
-                  onSelected: (value) {
+                  onSelected: (value) async {
                     if (value == 'profile') {
                       Navigator.push(
                         context,
@@ -966,6 +1132,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                         ),
                       );
                     } else if (value == 'logout') {
+                      await WebSession.clear();
+                      if (!context.mounted) return;
                       Navigator.pushReplacementNamed(context, '/login');
                     }
                   },
@@ -1121,23 +1289,27 @@ class _DashboardHomeState extends State<DashboardHome> {
                   return Row(
                     children: [
                       Expanded(
-                        child: _buildStatCard('Total Services', '156',
-                            Icons.assignment, Colors.blue),
+                        child: _buildStatCard('Total Services', _statValue('totalServices'),
+                            Icons.assignment, Colors.blue,
+                            onTap: () => _openScreen(const WebAppointments())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
                         child: _buildStatCard(
-                            'Active Queues', '8', Icons.queue, Colors.green),
+                            'Active Queues', _statValue('activeQueues'), Icons.queue, Colors.green,
+                            onTap: () => _openScreen(const WebQueueManagement())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Today\'s Appointments', '47',
-                            Icons.calendar_today, Colors.orange),
+                        child: _buildStatCard('Today\'s Appointments', _statValue('todaysAppointments'),
+                            Icons.calendar_today, Colors.orange,
+                            onTap: () => _openScreen(const WebAppointments())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Pending Documents', '12',
-                            Icons.description, Colors.red),
+                        child: _buildStatCard('Pending Documents', _statValue('pendingDocuments'),
+                            Icons.description, Colors.red,
+                            onTap: () => _openScreen(const WebDocumentManagement())),
                       ),
                     ],
                   );
@@ -1152,23 +1324,26 @@ class _DashboardHomeState extends State<DashboardHome> {
                   return Row(
                     children: [
                       Expanded(
-                        child: _buildStatCard('Total Citizens', '2,847',
-                            Icons.people, Colors.purple),
+                        child: _buildStatCard('Total Citizens', _statValue('totalCitizens'),
+                            Icons.people, Colors.purple,
+                            onTap: () => _openScreen(const WebAppointments())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Services Completed', '1,234',
-                            Icons.check_circle, Colors.teal),
+                        child: _buildStatCard('Services Completed', _statValue('completedServices'),
+                            Icons.check_circle, Colors.teal,
+                            onTap: () => _openScreen(const WebAppointments())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Avg. Satisfaction', '4.8',
+                        child: _buildStatCard('Avg. Satisfaction', _statValue('avgSatisfaction'),
                             Icons.star, Colors.amber),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Avg. Response', '2.4min',
-                            Icons.timer, Colors.indigo),
+                        child: _buildStatCard('Avg. Response', _statValue('avgResponseMinutes', suffix: 'min'),
+                            Icons.timer, Colors.indigo,
+                            onTap: () => _openScreen(const WebQueueManagement())),
                       ),
                     ],
                   );
@@ -1199,16 +1374,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
-                              _buildActivityItem('User checked in', '2 min ago',
-                                  Icons.qr_code),
-                              _buildActivityItem('Token A-024 called',
-                                  '5 min ago', Icons.notifications),
-                              _buildActivityItem('New appointment booked',
-                                  '12 min ago', Icons.calendar_today),
-                              _buildActivityItem('Document uploaded',
-                                  '20 min ago', Icons.upload_file),
-                              _buildActivityItem('Service completed',
-                                  '35 min ago', Icons.check_circle),
+                              ..._buildActivityWidgets(withGaps: false),
                             ],
                           ),
                         ),
@@ -1228,17 +1394,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
-                              _buildQuickStat("Today's Check-ins", '24',
-                                  Icons.qr_code_scanner, Colors.blue),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Pending Approvals', '12',
-                                  Icons.pending, Colors.orange),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Completed Services', '89',
-                                  Icons.check_circle, Colors.green),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Active Users', '8', Icons.people,
-                                  Colors.purple),
+                              ..._buildQuickStatWidgets(),
                             ],
                           ),
                         ),
@@ -1266,20 +1422,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
-                              _buildActivityItem('User checked in', '2 min ago',
-                                  Icons.qr_code),
-                              const SizedBox(height: 8),
-                              _buildActivityItem('Token A-024 called',
-                                  '5 min ago', Icons.notifications),
-                              const SizedBox(height: 8),
-                              _buildActivityItem('New appointment booked',
-                                  '12 min ago', Icons.calendar_today),
-                              const SizedBox(height: 8),
-                              _buildActivityItem('Document uploaded',
-                                  '20 min ago', Icons.upload_file),
-                              const SizedBox(height: 8),
-                              _buildActivityItem('Service completed',
-                                  '35 min ago', Icons.check_circle),
+                              ..._buildActivityWidgets(withGaps: true),
                             ],
                           ),
                         ),
@@ -1302,17 +1445,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
-                              _buildQuickStat("Today's Check-ins", '24',
-                                  Icons.qr_code_scanner, Colors.blue),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Pending Approvals', '12',
-                                  Icons.pending, Colors.orange),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Completed Services', '89',
-                                  Icons.check_circle, Colors.green),
-                              const SizedBox(height: 12),
-                              _buildQuickStat('Active Users', '8', Icons.people,
-                                  Colors.purple),
+                              ..._buildQuickStatWidgets(),
                             ],
                           ),
                         ),
@@ -1328,9 +1461,13 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
+  void _openScreen(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+  }
+
   Widget _buildStatCard(
-      String title, String value, IconData icon, Color color) {
-    return Container(
+      String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
+    final card = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1364,6 +1501,13 @@ class _DashboardHomeState extends State<DashboardHome> {
               overflow: TextOverflow.ellipsis),
         ],
       ),
+    );
+    if (onTap == null) return card;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      mouseCursor: SystemMouseCursors.click,
+      child: card,
     );
   }
 

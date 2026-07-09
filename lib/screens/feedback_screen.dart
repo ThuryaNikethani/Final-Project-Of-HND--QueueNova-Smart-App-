@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:http/http.dart' as http;
 import 'package:queuenova_mobile/config/app_colors.dart';
+import 'package:queuenova_mobile/config/backend_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const Map<String, String> _kServiceNameKeys = {
@@ -34,6 +37,30 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     'Visa Services',
   ];
 
+  Future<void> _mirrorFeedbackToBackend({
+    required String citizenName,
+    required String citizenNic,
+    required String service,
+    required int rating,
+    required String comment,
+  }) async {
+    try {
+      await http.post(
+        Uri.parse('${BackendConfig.baseUrl}/api/web/feedback'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'citizenName': citizenName,
+          'citizenNic': citizenNic.isNotEmpty ? citizenNic : null,
+          'service': service,
+          'rating': rating,
+          'comment': comment,
+        }),
+      );
+    } catch (e) {
+      debugPrint('Feedback backend mirror failed: $e');
+    }
+  }
+
   Future<void> _submitFeedback() async {
     if (rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,7 +88,18 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     final existingFeedback = prefs.getStringList('user_feedback') ?? [];
     existingFeedback.add(feedback.toString());
     await prefs.setStringList('user_feedback', existingFeedback);
-    
+
+    // Mirror to the backend so it counts toward the officer dashboard's
+    // Avg. Satisfaction stat. Fire-and-forget — never blocks the citizen.
+    final nic = prefs.getString('userNIC') ?? '';
+    _mirrorFeedbackToBackend(
+      citizenName: userName,
+      citizenNic: nic,
+      service: selectedService,
+      rating: rating.toInt(),
+      comment: commentController.text,
+    );
+
     setState(() => isSubmitting = false);
     
     if (mounted) {

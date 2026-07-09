@@ -86,6 +86,46 @@ class WebApiService {
     return [];
   }
 
+  static Future<bool> addToQueue({
+    required String token,
+    required String officeId,
+    required String citizenName,
+    String? citizenNic,
+    required String service,
+    int counter = 1,
+    bool isPriority = false,
+    String paymentStatus = 'pending',
+    double fee = 0,
+    String? waitTime,
+    required String officerName,
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/queue'),
+            headers: _headers,
+            body: jsonEncode({
+              'token': token,
+              'officeId': officeId,
+              'citizenName': citizenName,
+              'citizenNic': citizenNic,
+              'service': service,
+              'counter': counter,
+              'isPriority': isPriority,
+              'paymentStatus': paymentStatus,
+              'fee': fee,
+              'waitTime': waitTime,
+              'officerName': officerName,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.addToQueue error: $e');
+    }
+    return false;
+  }
+
   static Future<Map<String, dynamic>?> callNext(String officeId, String officerName) async {
     try {
       final res = await http

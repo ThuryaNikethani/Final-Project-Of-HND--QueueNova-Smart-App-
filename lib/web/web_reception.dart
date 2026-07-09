@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'web_api_service.dart';
 
 class WebReception extends StatefulWidget {
   const WebReception({super.key});
@@ -10,6 +12,10 @@ class WebReception extends StatefulWidget {
 }
 
 class _WebReceptionState extends State<WebReception> {
+  // Reception has a single front desk (no office selector like Queue
+  // Management), so check-ins are recorded against this office.
+  static const String _receptionOffice = 'Divisional Secretariat - Colombo';
+
   bool isScanning = false;
   String scannedData = '';
   int activeQueueCount = 24;
@@ -23,6 +29,54 @@ class _WebReceptionState extends State<WebReception> {
     {'token': 'A-027', 'citizen': 'Ruwan Jaya', 'nic': '1987456321', 'service': 'Birth Certificate', 'time': '12:00 PM', 'status': 'Checked In', 'checkedIn': true, 'paymentStatus': 'paid', 'fee': 200},
     {'token': 'A-028', 'citizen': 'Deepani Fernando', 'nic': '1978123456', 'service': 'Police Clearance', 'time': '01:30 PM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 1000},
   ];
+
+  socket_io.Socket? _socket;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppointmentsFromApi();
+    _socket = socket_io.io(
+      'http://localhost:3000',
+      socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+    );
+    _socket!.on('appointment_update', (_) => _loadAppointmentsFromApi());
+    _socket!.on('queue_update', (_) => _loadAppointmentsFromApi());
+    _socket!.connect();
+  }
+
+  @override
+  void dispose() {
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  /// Replaces the mock `todayAppointments` with real bookings for today
+  /// from Postgres, the same source `web_queue_management.dart` already
+  /// reads for the live queue. Falls back to the mock list if the backend
+  /// is unreachable or nothing's booked for today yet.
+  Future<void> _loadAppointmentsFromApi() async {
+    final rows = await WebApiService.getAppointments();
+    if (!mounted || rows.isEmpty) return;
+    final now = DateTime.now();
+    final todayStr = '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final todays = rows.where((r) => (r['date']?.toString() ?? '').startsWith(todayStr)).toList();
+    if (todays.isEmpty) return;
+    setState(() {
+      todayAppointments = todays.map((r) => {
+        'id': r['id'],
+        'token': r['token'] ?? '',
+        'citizen': r['citizen_name'] ?? '',
+        'nic': r['citizen_nic'],
+        'service': r['service'] ?? '',
+        'time': r['time'] ?? '',
+        'status': 'Not Checked In',
+        'checkedIn': false,
+        'paymentStatus': r['payment_status'] ?? 'pending',
+        'fee': double.tryParse(r['fee_amount']?.toString() ?? '') ?? 0,
+      }).toList();
+    });
+  }
 
   List<Map<String, dynamic>> walkInQueue = [
     {'name': 'Nimal Silva', 'nic': '1978123456', 'service': 'NIC Card', 'time': '09:15 AM', 'token': 'W-001', 'status': 'Waiting'},
@@ -84,6 +138,16 @@ class _WebReceptionState extends State<WebReception> {
         nic: appointment['nic'] as String?,
         title: 'Checked In',
         message: 'You have been checked in for ${appointment['service']}. Token ${appointment['token']} is now active — please wait to be called.',
+      );
+      WebApiService.addToQueue(
+        token: appointment['token'] as String,
+        officeId: _receptionOffice,
+        citizenName: appointment['citizen'] as String,
+        citizenNic: appointment['nic'] as String?,
+        service: appointment['service'] as String,
+        paymentStatus: appointment['paymentStatus'] as String,
+        fee: (appointment['fee'] as num).toDouble(),
+        officerName: 'Reception Officer',
       );
     } else if (appointment.isEmpty) {
       setState(() {
@@ -487,6 +551,16 @@ class _WebReceptionState extends State<WebReception> {
                                                       nic: apt['nic'] as String?,
                                                       title: 'Checked In',
                                                       message: 'You have been checked in for ${apt['service']}. Token ${apt['token']} is now active — please wait to be called.',
+                                                    );
+                                                    WebApiService.addToQueue(
+                                                      token: apt['token'] as String,
+                                                      officeId: _receptionOffice,
+                                                      citizenName: apt['citizen'] as String,
+                                                      citizenNic: apt['nic'] as String?,
+                                                      service: apt['service'] as String,
+                                                      paymentStatus: apt['paymentStatus'] as String,
+                                                      fee: (apt['fee'] as num).toDouble(),
+                                                      officerName: 'Reception Officer',
                                                     );
                                                   }
                                                 },

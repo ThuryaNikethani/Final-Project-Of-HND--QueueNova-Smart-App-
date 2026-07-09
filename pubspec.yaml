@@ -21,6 +21,7 @@ dependencies:
   # HTTP & Networking
   http: ^1.1.0
   dio: ^5.4.0
+  socket_io_client: ^2.0.3+1
 
   # CSV & Data
   csv: ^5.1.1

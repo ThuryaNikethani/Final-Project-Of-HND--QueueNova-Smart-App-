@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'web_role_model.dart';
 import 'web_main.dart';
 import 'web_api_service.dart';
+import 'web_session.dart';
 import '../services/push_notification_service.dart';
 
 class WebLogin extends StatefulWidget {
@@ -102,15 +103,23 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
         await PushNotificationService.instance
             .registerToken(collection: 'staff_push_tokens', docId: staffId.toString());
       }
+      final resolvedName = apiUser['name'] as String? ?? email;
+      final resolvedId = (staffId ?? email).toString();
+      await WebSession.save(
+        staffId: resolvedId,
+        userName: resolvedName,
+        userEmail: email,
+        userRole: role,
+      );
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => WebDashboard(
             userRole: role,
-            userName: apiUser['name'] as String? ?? email,
+            userName: resolvedName,
             userEmail: email,
-            userId: (staffId ?? email).toString(),
+            userId: resolvedId,
           ),
         ),
       );
@@ -127,6 +136,13 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
     if (!mounted) return;
 
     if (user.isNotEmpty) {
+      await WebSession.save(
+        staffId: email,
+        userName: user['name'] as String,
+        userEmail: email,
+        userRole: user['role'] as UserRole,
+      );
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

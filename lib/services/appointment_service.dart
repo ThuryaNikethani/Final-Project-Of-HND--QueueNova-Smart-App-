@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config/backend_config.dart';
 import '../models/appointment_model.dart';
 
 class AppointmentService {
@@ -111,7 +112,7 @@ class AppointmentService {
     final name = prefs.getString('userName') ?? '';
 
     http.post(
-      Uri.parse('http://localhost:3000/api/web/appointments'),
+      Uri.parse('${BackendConfig.baseUrl}/api/web/appointments'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'id': a.id,

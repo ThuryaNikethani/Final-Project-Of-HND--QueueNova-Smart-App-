@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../config/backend_config.dart';
 
 class ModerationResult {
   final bool safe;
@@ -13,7 +14,7 @@ class ModerationResult {
 /// Checks images for inappropriate content via the backend's Google Cloud
 /// Vision SafeSearch proxy before they're accepted as a profile picture.
 class ImageModerationService {
-  static const String _backendBase = 'http://localhost:3000/api';
+  static const String _backendBase = '${BackendConfig.baseUrl}/api';
 
   /// Returns a [ModerationResult]. If the moderation service can't be
   /// reached or isn't configured, [checked] is false and [safe] defaults to

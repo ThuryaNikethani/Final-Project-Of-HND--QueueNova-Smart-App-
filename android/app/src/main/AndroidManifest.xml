@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     
+    <!-- Required for all network access (Firebase, backend API, ML server).
+         The debug-variant manifest also declares this for the Flutter tool's
+         own use, but release/profile builds need it declared here too. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Camera and Storage Permissions for Document Upload -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -15,7 +20,15 @@
     <application
         android:label="QueueNova"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <!-- Allows plain http:// (not just https://) to the local Node
+             dev backend (lib/web/backend_server) and the local ML server —
+             both run over plain HTTP with no TLS. Android 9+ blocks
+             cleartext traffic by default; without this, every HTTP/
+             WebSocket call this app makes to the backend is silently
+             blocked on a real device or newer emulator. -->
+
         
         <activity
             android:name=".MainActivity"

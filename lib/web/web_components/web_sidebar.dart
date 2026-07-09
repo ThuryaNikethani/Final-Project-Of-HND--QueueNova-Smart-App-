@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../web_role_model.dart';
+import '../web_session.dart';
 
 class WebSidebar extends StatelessWidget {
   final int selectedIndex;
@@ -319,7 +320,9 @@ class WebSidebar extends StatelessWidget {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () {
+                    onTap: () async {
+                      await WebSession.clear();
+                      if (!context.mounted) return;
                       Navigator.pushReplacementNamed(context, '/login');
                     },
                     borderRadius: BorderRadius.circular(12),

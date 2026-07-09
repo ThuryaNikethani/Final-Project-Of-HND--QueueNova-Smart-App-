@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../config/backend_config.dart';
 
 class PaymentService {
   // Local Node.js backend (start with: cd lib/web/backend_server && npm start)
-  static const String _baseUrl = 'http://localhost:3000/api';
+  static const String _baseUrl = '${BackendConfig.baseUrl}/api';
 
   static Future<Map<String, dynamic>> createPaymentIntent({
     required double amount,
