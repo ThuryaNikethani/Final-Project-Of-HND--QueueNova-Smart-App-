@@ -539,5 +539,22 @@
   "doc_deed": "பத்திரம்",
   "doc_deed_desc": "அசல் நில பத்திரம்",
   "doc_survey_plan": "கணக்கெடுப்பு திட்டம்",
-  "doc_survey_plan_desc": "நில கணக்கெடுப்பு திட்டம்"
+  "doc_survey_plan_desc": "நில கணக்கெடுப்பு திட்டம்",
+
+  "office_available_msg": "அலுவலகம் கிடைக்கிறது",
+  "office_closed_today_msg": "அலுவலகம் இன்று மூடப்பட்டுள்ளது",
+
+  "crowd_level_low": "குறைவு",
+  "crowd_level_medium": "நடுத்தரம்",
+  "crowd_level_high": "அதிகம்",
+  "crowd_level_closed": "மூடப்பட்டது",
+  "wait_time_unknown": "-- நிமி.",
+
+  "gender_male": "ஆண்",
+  "gender_female": "பெண்",
+  "not_provided": "வழங்கப்படவில்லை",
+  "not_available": "கிடைக்கவில்லை",
+  "member_since_label": "உறுப்பினரான தேதி",
+  "payment_processed_via": "{} மூலம் கட்டணம் செலுத்தப்பட்டது",
+  "language_changed_to": "மொழி {} ஆக மாற்றப்பட்டது"
 }

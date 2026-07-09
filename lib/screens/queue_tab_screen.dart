@@ -94,45 +94,72 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        children: [
-                          Text('currently_serving_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          Text(
-                            'A-$currentServing',
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('currently_serving_label'.tr(),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'A-$currentServing',
+                                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       Container(
                         width: 1,
                         height: 40,
                         color: Colors.white.withOpacity(0.3),
                       ),
-                      Column(
-                        children: [
-                          Text('your_token_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          Text(
-                            'A-$currentToken',
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('your_token_label'.tr(),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'A-$currentToken',
+                                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       Container(
                         width: 1,
                         height: 40,
                         color: Colors.white.withOpacity(0.3),
                       ),
-                      Column(
-                        children: [
-                          Text('est_wait_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          const SizedBox(height: 5),
-                          Text(
-                            'estimated_wait_min_suffix'.tr(args: ['$estimatedWait']),
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('est_wait_label'.tr(),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'estimated_wait_min_suffix'.tr(args: ['$estimatedWait']),
+                                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),

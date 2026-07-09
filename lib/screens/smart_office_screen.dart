@@ -6,6 +6,13 @@ import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
 import 'package:queuenova_mobile/services/ml_prediction_service.dart';
 
+const Map<String, String> _kCrowdLabelKeys = {
+  'Low': 'crowd_level_low',
+  'Medium': 'crowd_level_medium',
+  'High': 'crowd_level_high',
+  'Closed': 'crowd_level_closed',
+};
+
 class SmartOfficeScreen extends StatefulWidget {
   const SmartOfficeScreen({super.key});
 
@@ -104,7 +111,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
         'distance': static_['distance'],
         'officeId': id,
         'crowd': pred?.crowdLevel.label ?? 'Low',
-        'wait': pred != null ? '${pred.estimatedWaitMinutes} min' : '-- min',
+        'waitMinutes': pred?.estimatedWaitMinutes,
         'recommended': pred != null && pred.crowdLevel != CrowdLevel.high,
       };
     }).toList();
@@ -329,13 +336,15 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
             children: [
               _buildInfoChip(
                 icon: Icons.people,
-                label: office['crowd'],
+                label: _kCrowdLabelKeys[office['crowd']]!.tr(),
                 color: crowdColor,
               ),
               const SizedBox(width: 8),
               _buildInfoChip(
                 icon: Icons.timer,
-                label: office['wait'],
+                label: office['waitMinutes'] != null
+                    ? 'minutes_suffix'.tr(args: ['${office['waitMinutes']}'])
+                    : 'wait_time_unknown'.tr(),
                 color: AppColors.info,
               ),
               const SizedBox(width: 8),

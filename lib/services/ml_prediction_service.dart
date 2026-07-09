@@ -612,6 +612,20 @@ extension CrowdLevelLabel on CrowdLevel {
     }
   }
 
+  /// Translation key for [label], for screens to display via `.tr()`.
+  String get labelKey {
+    switch (this) {
+      case CrowdLevel.low:
+        return 'crowd_level_low';
+      case CrowdLevel.medium:
+        return 'crowd_level_medium';
+      case CrowdLevel.high:
+        return 'crowd_level_high';
+      case CrowdLevel.closed:
+        return 'crowd_level_closed';
+    }
+  }
+
   String get emoji {
     switch (this) {
       case CrowdLevel.low:

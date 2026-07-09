@@ -47,15 +47,19 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     setState(() {
       final rawName = authService.userName ?? prefs.getString('userName');
       fullName = (rawName != null && rawName.isNotEmpty && rawName != 'Citizen User') ? rawName : '';
-      nic = authService.userNIC ?? prefs.getString('userNIC') ?? 'Not provided';
-      birthDate = authService.userBirthDate ?? prefs.getString('userBirthDate') ?? 'Not available';
-      gender = authService.userGender ?? prefs.getString('userGender') ?? 'Not available';
+      nic = authService.userNIC ?? prefs.getString('userNIC') ?? '';
+      birthDate = authService.userBirthDate ?? prefs.getString('userBirthDate') ?? '';
+      gender = authService.userGender ?? prefs.getString('userGender') ?? '';
       final rawEmail = authService.userEmail ?? prefs.getString('userEmail');
       email = (rawEmail != null && rawEmail.isNotEmpty && rawEmail != 'citizen@example.com') ? rawEmail : '';
       final rawPhone = authService.userPhone ?? prefs.getString('userPhone');
       phone = rawPhone ?? '';
       address = prefs.getString('userAddress') ?? '';
-      memberSince = prefs.getString('memberSince') ?? '';
+      final memberSinceMonth = prefs.getInt('memberSinceMonth');
+      final memberSinceYear = prefs.getInt('memberSinceYear');
+      memberSince = (memberSinceMonth != null && memberSinceYear != null)
+          ? DateFormat('MMMM yyyy', context.locale.toString()).format(DateTime(memberSinceYear, memberSinceMonth))
+          : '';
       isLoading = false;
 
       nameController.text = fullName;
@@ -216,16 +220,17 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               const SizedBox(height: 24),
 
               // NIC Number (Auto-filled from registration, cannot edit)
-              _buildReadOnlyField('nic_number'.tr(), nic, Icons.badge_outlined),
+              _buildReadOnlyField('nic_number'.tr(),
+                  nic.isNotEmpty ? nic : 'not_provided'.tr(), Icons.badge_outlined),
               const SizedBox(height: 16),
 
               // Date of Birth (Auto-extracted from NIC during registration)
-              _buildReadOnlyField(
-                  'date_of_birth'.tr(), birthDate, Icons.cake_outlined),
+              _buildReadOnlyField('date_of_birth'.tr(),
+                  birthDate.isNotEmpty ? birthDate : 'not_available'.tr(), Icons.cake_outlined),
               const SizedBox(height: 16),
 
               // Gender (Auto-extracted from NIC during registration)
-              _buildReadOnlyField('gender'.tr(), gender, Icons.wc_outlined),
+              _buildReadOnlyField('gender'.tr(), _genderLabel(gender), Icons.wc_outlined),
               const SizedBox(height: 16),
 
               // Full Name (Editable)
@@ -268,8 +273,8 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               const SizedBox(height: 16),
 
               // Member Since
-              _buildReadOnlyField(
-                  'Member Since', memberSince.isNotEmpty ? memberSince : 'Not available', Icons.calendar_today_outlined),
+              _buildReadOnlyField('member_since_label'.tr(),
+                  memberSince.isNotEmpty ? memberSince : 'not_available'.tr(), Icons.calendar_today_outlined),
               const SizedBox(height: 24),
 
               if (isEditing)
@@ -312,6 +317,17 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         ),
       ),
     );
+  }
+
+  String _genderLabel(String g) {
+    switch (g) {
+      case 'Male':
+        return 'gender_male'.tr();
+      case 'Female':
+        return 'gender_female'.tr();
+      default:
+        return 'not_available'.tr();
+    }
   }
 
   Widget _buildReadOnlyField(String label, String value, IconData icon) {

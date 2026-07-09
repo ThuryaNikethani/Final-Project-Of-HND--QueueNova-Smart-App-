@@ -268,7 +268,7 @@ class OfficeSettingsService {
     if (settings == null) {
       return {
         'isWorking': true,
-        'message': 'Office available',
+        'messageKey': 'office_available_msg',
         'start': null,
         'end': null,
         'lunchBreak': [],
@@ -278,7 +278,7 @@ class OfficeSettingsService {
     if (!settings.isWorkingDay(date)) {
       return {
         'isWorking': false,
-        'message': 'Office is closed on this day',
+        'messageKey': 'office_closed_today_msg',
         'start': null,
         'end': null,
         'lunchBreak': [],
@@ -290,7 +290,7 @@ class OfficeSettingsService {
     if (hours == null) {
       return {
         'isWorking': false,
-        'message': 'Office is closed on this day',
+        'messageKey': 'office_closed_today_msg',
         'start': null,
         'end': null,
         'lunchBreak': [],
@@ -299,7 +299,7 @@ class OfficeSettingsService {
 
     return {
       'isWorking': true,
-      'message': 'Office is open',
+      'messageKey': 'office_is_open',
       'start': hours.start,
       'end': hours.end,
       'lunchBreak': hours.lunchBreakTimes,

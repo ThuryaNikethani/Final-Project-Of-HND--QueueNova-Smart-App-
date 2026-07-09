@@ -247,7 +247,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           const Icon(Icons.wc, color: AppColors.primaryBlue, size: 20),
                           const SizedBox(width: 12),
                           Expanded(child: Text('gender'.tr(), style: TextStyle(color: AppColors.grey))),
-                          Text(_decodedGender, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          Text(_decodedGender == 'Female' ? 'gender_female'.tr() : _decodedGender == 'Male' ? 'gender_male'.tr() : _decodedGender, style: const TextStyle(fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ],

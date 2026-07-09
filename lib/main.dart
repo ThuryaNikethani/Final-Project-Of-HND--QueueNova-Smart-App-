@@ -51,7 +51,7 @@ class QueueNovaApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LanguageProvider()),
       ],
       child: MaterialApp(
-        title: 'QueueNova',
+        title: 'app_name'.tr(),
         debugShowCheckedModeBanner: false,
         theme: appTheme(),
         home: const SplashScreen(),

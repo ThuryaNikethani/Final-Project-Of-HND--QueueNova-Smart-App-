@@ -539,5 +539,22 @@
   "doc_deed": "Deed",
   "doc_deed_desc": "Original land deed",
   "doc_survey_plan": "Survey Plan",
-  "doc_survey_plan_desc": "Land survey plan"
+  "doc_survey_plan_desc": "Land survey plan",
+
+  "office_available_msg": "Office available",
+  "office_closed_today_msg": "Office is closed on this day",
+
+  "crowd_level_low": "Low",
+  "crowd_level_medium": "Medium",
+  "crowd_level_high": "High",
+  "crowd_level_closed": "Closed",
+  "wait_time_unknown": "-- min",
+
+  "gender_male": "Male",
+  "gender_female": "Female",
+  "not_provided": "Not provided",
+  "not_available": "Not available",
+  "member_since_label": "Member Since",
+  "payment_processed_via": "Payment processed via {}",
+  "language_changed_to": "Language changed to {}"
 }

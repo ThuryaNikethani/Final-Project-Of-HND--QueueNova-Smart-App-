@@ -864,7 +864,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                _officeAvailability!['message'] as String,
+                (_officeAvailability!['messageKey'] as String).tr(),
                 style: const TextStyle(
                     color: AppColors.error,
                     fontSize: 13,
@@ -1387,12 +1387,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      doc.nameKey.tr(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                    Flexible(
+                      child: Text(
+                        doc.nameKey.tr(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                     Container(

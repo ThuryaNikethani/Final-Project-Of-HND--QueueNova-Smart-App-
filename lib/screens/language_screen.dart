@@ -39,7 +39,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Language changed to $languageName'),
+          content: Text('language_changed_to'.tr(args: [languageName])),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.success,
           duration: const Duration(seconds: 1),
@@ -80,7 +80,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
                     languageName: 'සිංහල',
                     flagIcon: '🇱🇰',
                     isSelected: _selectedLanguage == 'si',
-                    onTap: () => _changeLanguage('si', 'Sinhala'),
+                    onTap: () => _changeLanguage('si', 'සිංහල'),
                   ),
                   const SizedBox(height: 12),
                   _buildLanguageOption(
@@ -88,7 +88,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
                     languageName: 'தமிழ்',
                     flagIcon: '🇱🇰',
                     isSelected: _selectedLanguage == 'ta',
-                    onTap: () => _changeLanguage('ta', 'Tamil'),
+                    onTap: () => _changeLanguage('ta', 'தமிழ்'),
                   ),
                 ],
               ),

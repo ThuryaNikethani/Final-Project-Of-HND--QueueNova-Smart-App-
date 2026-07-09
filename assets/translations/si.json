@@ -539,5 +539,22 @@
   "doc_deed": "ඔප්පුව",
   "doc_deed_desc": "මුල් ඉඩම් ඔප්පුව",
   "doc_survey_plan": "මිනින්දෝරු සැලැස්ම",
-  "doc_survey_plan_desc": "ඉඩම් මිනින්දෝරු සැලැස්ම"
+  "doc_survey_plan_desc": "ඉඩම් මිනින්දෝරු සැලැස්ම",
+
+  "office_available_msg": "කාර්යාලය ලබා ගත හැක",
+  "office_closed_today_msg": "කාර්යාලය අද දින වසා ඇත",
+
+  "crowd_level_low": "අඩුයි",
+  "crowd_level_medium": "මධ්‍යම",
+  "crowd_level_high": "වැඩිය",
+  "crowd_level_closed": "වසා ඇත",
+  "wait_time_unknown": "-- මිනි.",
+
+  "gender_male": "පුරුෂ",
+  "gender_female": "ස්ත්‍රී",
+  "not_provided": "සපයා නැත",
+  "not_available": "නොමැත",
+  "member_since_label": "සාමාජිකත්වය ලද දිනය",
+  "payment_processed_via": "{} හරහා ගෙවීම සිදු කරන ලදී",
+  "language_changed_to": "භාෂාව {} බවට වෙනස් කරන ලදී"
 }

@@ -444,11 +444,10 @@ class AuthService extends ChangeNotifier {
     if (phone.isNotEmpty) await prefs.setString('userPhone', phone);
     if (birthDate.isNotEmpty) await prefs.setString('userBirthDate', birthDate);
     if (gender.isNotEmpty) await prefs.setString('userGender', gender);
-    if (!prefs.containsKey('memberSince')) {
+    if (!prefs.containsKey('memberSinceMonth')) {
       final now = DateTime.now();
-      const months = ['January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'];
-      await prefs.setString('memberSince', '${months[now.month - 1]} ${now.year}');
+      await prefs.setInt('memberSinceMonth', now.month);
+      await prefs.setInt('memberSinceYear', now.year);
     }
   }
 

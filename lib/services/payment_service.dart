@@ -69,7 +69,8 @@ class PaymentService {
       return {
         'success': true,
         'transactionId': transactionId,
-        'message': 'Payment processed via $paymentMethod',
+        'messageKey': 'payment_processed_via',
+        'messageArgs': [paymentMethod],
       };
     } catch (e) {
       return {
