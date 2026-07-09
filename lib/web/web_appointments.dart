@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WebAppointments extends StatefulWidget {
   const WebAppointments({super.key});
@@ -103,6 +104,32 @@ class _WebAppointmentsState extends State<WebAppointments> {
     return paymentStatus == 'paid' ? Colors.green : Colors.orange;
   }
 
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection (the same one the citizen app's Notifications screen reads
+  /// live). Looks the uid up through `nic_index`, same as login does.
+  Future<void> _notifyCitizenByNic({
+    required String? nic,
+    required String title,
+    required String message,
+  }) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'appointment',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenByNic error: $e');
+    }
+  }
+
   void _confirmPayment(Map<String, dynamic> appointment) {
     showDialog(
       context: context,
@@ -133,6 +160,11 @@ class _WebAppointmentsState extends State<WebAppointments> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Payment confirmed'), backgroundColor: Colors.green),
+              );
+              _notifyCitizenByNic(
+                nic: appointment['nic'] as String?,
+                title: 'Payment Confirmed',
+                message: 'Your payment of Rs. ${appointment['fee']} for ${appointment['service']} (Token ${appointment['token']}) has been confirmed.',
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -214,6 +246,11 @@ class _WebAppointmentsState extends State<WebAppointments> {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Appointment confirmed'), backgroundColor: Colors.green),
+                        );
+                        _notifyCitizenByNic(
+                          nic: appointment['nic'] as String?,
+                          title: 'Appointment Confirmed',
+                          message: 'Your ${appointment['service']} appointment (Token ${appointment['token']}) has been confirmed.',
                         );
                       },
                       icon: const Icon(Icons.check),

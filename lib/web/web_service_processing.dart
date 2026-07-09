@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WebServiceProcessing extends StatefulWidget {
   const WebServiceProcessing({super.key});
@@ -225,6 +226,32 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
     );
   }
 
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection (the same one the citizen app's Notifications screen reads
+  /// live). Looks the uid up through `nic_index`, same as login does.
+  Future<void> _notifyCitizenByNic({
+    required String? nic,
+    required String title,
+    required String message,
+  }) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'appointment',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenByNic error: $e');
+    }
+  }
+
   void _showRejectDialog(Map<String, dynamic> request) {
     final TextEditingController reasonController = TextEditingController();
 
@@ -265,6 +292,11 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Application rejected'), backgroundColor: Colors.red),
+              );
+              _notifyCitizenByNic(
+                nic: request['nic'] as String?,
+                title: 'Application Rejected',
+                message: 'Your ${request['service']} application has been rejected. Reason: ${reasonController.text}',
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -317,6 +349,11 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Application approved'), backgroundColor: Colors.green),
+              );
+              _notifyCitizenByNic(
+                nic: request['nic'] as String?,
+                title: 'Application Approved',
+                message: 'Your ${request['service']} application has been approved.',
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),

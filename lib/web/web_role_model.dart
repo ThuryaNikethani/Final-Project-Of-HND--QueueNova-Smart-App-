@@ -25,11 +25,13 @@ class RolePermissions {
       'document_management',  // ← ADDED
       'account_deletion_requests',
       'notification_delivery_log',
+      'notification_history',
     ],
     UserRole.queueManager: [
       'dashboard',
       'queue_management',
       'document_management',  // ← ADDED
+      'notification_history',
     ],
     UserRole.serviceProcessor: [
       'dashboard',
@@ -37,12 +39,14 @@ class RolePermissions {
       'document_management',
       'account_deletion_requests',
       'notification_delivery_log',
+      'notification_history',
     ],
     UserRole.reception: [
       'dashboard',
       'reception',
       'appointments',
       'document_management',  // ← ADDED
+      'notification_history',
     ],
     UserRole.departmentManager: [
       'dashboard',
@@ -51,6 +55,7 @@ class RolePermissions {
       'staff_performance',
       'payment_reports',
       'document_management',  // ← ADDED
+      'notification_history',
     ],
   };
 

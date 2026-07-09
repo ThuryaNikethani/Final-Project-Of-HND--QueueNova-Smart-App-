@@ -140,8 +140,10 @@ class AppointmentService {
   static Future<void> updateAppointmentStatus(String id, String status) async {
     await _loadFromLocal();
     final index = _appointments.indexWhere((a) => a.id == id);
+    AppointmentModel? appointment;
     if (index != -1) {
-      _appointments[index] = _appointments[index].copyWith(status: status);
+      appointment = _appointments[index].copyWith(status: status);
+      _appointments[index] = appointment;
       await _saveToLocal();
     }
 
@@ -153,15 +155,24 @@ class AppointmentService {
         debugPrint('Firestore updateStatus failed: $e');
       }
     }
+
+    if (appointment != null) {
+      _notifyCitizenOfStatusChange(
+        title: 'Appointment $status',
+        message: 'Your ${appointment.service} appointment (Token ${appointment.token}) is now $status.',
+      );
+      _notifyStaffOfStatusChange(appointment, status);
+    }
   }
 
   static Future<void> updateAppointmentPaymentStatus(
       String id, String paymentStatus) async {
     await _loadFromLocal();
     final index = _appointments.indexWhere((a) => a.id == id);
+    AppointmentModel? appointment;
     if (index != -1) {
-      _appointments[index] =
-          _appointments[index].copyWith(paymentStatus: paymentStatus);
+      appointment = _appointments[index].copyWith(paymentStatus: paymentStatus);
+      _appointments[index] = appointment;
       await _saveToLocal();
     }
 
@@ -172,6 +183,52 @@ class AppointmentService {
       } catch (e) {
         debugPrint('Firestore updatePaymentStatus failed: $e');
       }
+    }
+
+    if (appointment != null) {
+      _notifyCitizenOfStatusChange(
+        title: 'Payment $paymentStatus',
+        message: 'Payment for your ${appointment.service} appointment (Token ${appointment.token}) is now $paymentStatus.',
+      );
+    }
+  }
+
+  static Future<void> _notifyCitizenOfStatusChange({
+    required String title,
+    required String message,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await _db.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'appointment',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenOfStatusChange failed: $e');
+    }
+  }
+
+  static Future<void> _notifyStaffOfStatusChange(AppointmentModel appointment, String status) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('userName') ?? 'A citizen';
+      await _db.collection('staff_notifications').add({
+        'title': 'Appointment $status',
+        'message': '$name\'s ${appointment.service} appointment (Token ${appointment.token}) is now $status.',
+        'type': 'appointment',
+        'action': 'View Appointment',
+        'targetRoles': const ['reception'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyStaffOfStatusChange failed: $e');
     }
   }
 

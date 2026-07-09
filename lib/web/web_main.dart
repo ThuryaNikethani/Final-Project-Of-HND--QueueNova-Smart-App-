@@ -7,6 +7,7 @@ import 'package:queuenova_mobile/firebase_options.dart';
 import 'web_login.dart';
 import 'web_account_deletion_requests.dart';
 import 'web_notification_delivery_log.dart';
+import 'web_notifications.dart';
 import 'web_components/web_sidebar.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_queue_management.dart';
@@ -228,6 +229,12 @@ class _WebDashboardState extends State<WebDashboard> {
         'permission': 'notification_delivery_log',
         'label': 'Notification Delivery Log',
         'icon': Icons.mark_email_read
+      },
+      {
+        'widget': WebNotifications(userRole: widget.userRole, staffId: widget.userId),
+        'permission': 'notification_history',
+        'label': 'Notification History',
+        'icon': Icons.history_toggle_off
       },
       {
         'widget': const WebAppointments(),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WebReception extends StatefulWidget {
   const WebReception({super.key});
@@ -16,11 +17,11 @@ class _WebReceptionState extends State<WebReception> {
   int walkInCount = 12;
 
   List<Map<String, dynamic>> todayAppointments = [
-    {'token': 'A-024', 'citizen': 'K.N.T. Nikethani', 'service': 'Passport Renewal', 'time': '10:30 AM', 'status': 'Checked In', 'checkedIn': true, 'paymentStatus': 'paid', 'fee': 5000},
-    {'token': 'A-025', 'citizen': 'Saman Perera', 'service': 'NIC Card', 'time': '11:00 AM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 500},
-    {'token': 'A-026', 'citizen': 'Mala Kumari', 'service': 'Driving License', 'time': '11:30 AM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 3000},
-    {'token': 'A-027', 'citizen': 'Ruwan Jaya', 'service': 'Birth Certificate', 'time': '12:00 PM', 'status': 'Checked In', 'checkedIn': true, 'paymentStatus': 'paid', 'fee': 200},
-    {'token': 'A-028', 'citizen': 'Deepani Fernando', 'service': 'Police Clearance', 'time': '01:30 PM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 1000},
+    {'token': 'A-024', 'citizen': 'K.N.T. Nikethani', 'nic': '200486403960', 'service': 'Passport Renewal', 'time': '10:30 AM', 'status': 'Checked In', 'checkedIn': true, 'paymentStatus': 'paid', 'fee': 5000},
+    {'token': 'A-025', 'citizen': 'Saman Perera', 'nic': '855420159V', 'service': 'NIC Card', 'time': '11:00 AM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 500},
+    {'token': 'A-026', 'citizen': 'Mala Kumari', 'nic': '925230080V', 'service': 'Driving License', 'time': '11:30 AM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 3000},
+    {'token': 'A-027', 'citizen': 'Ruwan Jaya', 'nic': '1987456321', 'service': 'Birth Certificate', 'time': '12:00 PM', 'status': 'Checked In', 'checkedIn': true, 'paymentStatus': 'paid', 'fee': 200},
+    {'token': 'A-028', 'citizen': 'Deepani Fernando', 'nic': '1978123456', 'service': 'Police Clearance', 'time': '01:30 PM', 'status': 'Not Checked In', 'checkedIn': false, 'paymentStatus': 'pending', 'fee': 1000},
   ];
 
   List<Map<String, dynamic>> walkInQueue = [
@@ -28,6 +29,32 @@ class _WebReceptionState extends State<WebReception> {
     {'name': 'Kamal Perera', 'nic': '1985123490', 'service': 'Passport', 'time': '09:45 AM', 'token': 'W-002', 'status': 'Waiting'},
     {'name': 'Sunil Jayawardena', 'nic': '1990123478', 'service': 'Driving License', 'time': '10:00 AM', 'token': 'W-003', 'status': 'Waiting'},
   ];
+
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection (the same one the citizen app's Notifications screen reads
+  /// live). Looks the uid up through `nic_index`, same as login does.
+  Future<void> _notifyCitizenByNic({
+    required String? nic,
+    required String title,
+    required String message,
+  }) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'appointment',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenByNic error: $e');
+    }
+  }
 
   void _processCheckIn(String qrData) {
     final appointment = todayAppointments.firstWhere(
@@ -52,6 +79,11 @@ class _WebReceptionState extends State<WebReception> {
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
         ),
+      );
+      _notifyCitizenByNic(
+        nic: appointment['nic'] as String?,
+        title: 'Checked In',
+        message: 'You have been checked in for ${appointment['service']}. Token ${appointment['token']} is now active — please wait to be called.',
       );
     } else if (appointment.isEmpty) {
       setState(() {
@@ -450,6 +482,11 @@ class _WebReceptionState extends State<WebReception> {
                                                         content: Text('${apt['citizen']} checked in manually'),
                                                         backgroundColor: Colors.green,
                                                       ),
+                                                    );
+                                                    _notifyCitizenByNic(
+                                                      nic: apt['nic'] as String?,
+                                                      title: 'Checked In',
+                                                      message: 'You have been checked in for ${apt['service']}. Token ${apt['token']} is now active — please wait to be called.',
                                                     );
                                                   }
                                                 },
