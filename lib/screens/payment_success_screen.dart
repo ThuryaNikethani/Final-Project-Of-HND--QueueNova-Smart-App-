@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/home_screen.dart';
 
@@ -55,9 +56,9 @@ class PaymentSuccessScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Payment Successful!',
-                  style: TextStyle(
+                Text(
+                  'payment_successful_title'.tr(),
+                  style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -65,7 +66,7 @@ class PaymentSuccessScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Your appointment has been confirmed',
+                  'appointment_has_been_confirmed'.tr(),
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white.withOpacity(0.9),
@@ -82,25 +83,25 @@ class PaymentSuccessScreen extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      const Text(
-                        'Payment Receipt',
-                        style: TextStyle(
+                      Text(
+                        'payment_receipt_title'.tr(),
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const Divider(height: 24),
-                      _buildReceiptRow('Transaction ID', transactionId),
+                      _buildReceiptRow('transaction_id_label'.tr(), transactionId),
                       const SizedBox(height: 12),
-                      _buildReceiptRow('Service', serviceName),
+                      _buildReceiptRow('service_label'.tr(), serviceName),
                       const SizedBox(height: 12),
-                      _buildReceiptRow('Office', officeName),
+                      _buildReceiptRow('office_label'.tr(), officeName),
                       const SizedBox(height: 12),
-                      _buildReceiptRow('Appointment ID', appointmentId),
+                      _buildReceiptRow('appointment_id_label'.tr(), appointmentId),
                       const SizedBox(height: 12),
-                      _buildReceiptRow('Amount Paid', 'Rs. ${amount.toStringAsFixed(0)}'),
+                      _buildReceiptRow('amount_paid_label'.tr(), 'amount_rs_value'.tr(args: [amount.toStringAsFixed(0)])),
                       const Divider(height: 24),
-                      _buildReceiptRow('Payment Status', 'Completed', isStatus: true),
+                      _buildReceiptRow('payment_status_label'.tr(), 'completed_status'.tr(), isStatus: true),
                     ],
                   ),
                 ),
@@ -114,11 +115,11 @@ class PaymentSuccessScreen extends StatelessWidget {
                         onPressed: () {
                           // Share receipt
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Receipt saved'), backgroundColor: AppColors.success),
+                            SnackBar(content: Text('receipt_saved'.tr()), backgroundColor: AppColors.success),
                           );
                         },
                         icon: const Icon(Icons.download),
-                        label: const Text('Save Receipt'),
+                        label: Text('save_receipt_button'.tr()),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Colors.white),
                           foregroundColor: Colors.white,
@@ -137,7 +138,7 @@ class PaymentSuccessScreen extends StatelessWidget {
                           );
                         },
                         icon: const Icon(Icons.home),
-                        label: const Text('Go Home'),
+                        label: Text('go_home_button'.tr()),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: AppColors.primaryBlue,

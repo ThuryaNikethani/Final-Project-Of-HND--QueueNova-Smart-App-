@@ -1,6 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:intl/intl.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
+
+const Map<String, String> _kHistoryStatusKeys = {
+  'All': 'filter_all',
+  'Pending': 'pending',
+  'Processing': 'processing_status',
+  'Completed': 'completed_status',
+  'Cancelled': 'cancelled',
+};
+
+const Map<String, String> _kHistoryServiceKeys = {
+  'Passport Renewal': 'svc_passport_renewal_name',
+  'National ID Card': 'svc_national_id_name',
+  'Driving License': 'svc_driving_license_name',
+  'Birth Certificate': 'svc_birth_certificate_name',
+  'Police Clearance': 'svc_police_clearance_name',
+};
+
+const Map<String, String> _kHistoryOfficeKeys = {
+  'Divisional Secretariat - Colombo': 'office_divisional_secretariat_colombo',
+  'Department of Registration': 'office_department_registration',
+  'RMV - Werahera': 'office_rmv_werahera',
+  'Divisional Secretariat - Kandy': 'office_divisional_secretariat_kandy',
+  'Police Headquarters': 'office_police_headquarters',
+};
 
 class ServiceHistoryScreen extends StatefulWidget {
   const ServiceHistoryScreen({super.key});
@@ -20,7 +45,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       'office': 'Divisional Secretariat - Colombo',
       'date': DateTime(2026, 5, 20),
       'status': 'Processing',
-      'fee': 'Rs. 5,000',
+      'fee': '5,000',
       'tracking': 'TRK12345',
     },
     {
@@ -29,7 +54,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       'office': 'Department of Registration',
       'date': DateTime(2026, 5, 15),
       'status': 'Completed',
-      'fee': 'Rs. 500',
+      'fee': '500',
       'tracking': 'TRK12346',
     },
     {
@@ -38,7 +63,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       'office': 'RMV - Werahera',
       'date': DateTime(2026, 5, 23),
       'status': 'Pending',
-      'fee': 'Rs. 3,000',
+      'fee': '3,000',
       'tracking': 'TRK12347',
     },
     {
@@ -47,7 +72,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       'office': 'Divisional Secretariat - Kandy',
       'date': DateTime(2026, 5, 10),
       'status': 'Completed',
-      'fee': 'Rs. 200',
+      'fee': '200',
       'tracking': 'TRK12348',
     },
     {
@@ -56,7 +81,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       'office': 'Police Headquarters',
       'date': DateTime(2026, 5, 5),
       'status': 'Cancelled',
-      'fee': 'Rs. 1,000',
+      'fee': '1,000',
       'tracking': 'TRK12349',
     },
   ];
@@ -90,7 +115,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Service History'),
+        title: Text('service_history'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -107,9 +132,9 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('Total', historyList.length.toString(), Icons.receipt_long),
-                _buildStatItem('Completed', historyList.where((h) => h['status'] == 'Completed').length.toString(), Icons.check_circle),
-                _buildStatItem('Pending', historyList.where((h) => h['status'] == 'Pending').length.toString(), Icons.pending),
+                _buildStatItem('stat_total_label'.tr(), historyList.length.toString(), Icons.receipt_long),
+                _buildStatItem('completed_status'.tr(), historyList.where((h) => h['status'] == 'Completed').length.toString(), Icons.check_circle),
+                _buildStatItem('pending'.tr(), historyList.where((h) => h['status'] == 'Pending').length.toString(), Icons.pending),
               ],
             ),
           ),
@@ -124,7 +149,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
               itemBuilder: (context, index) {
                 final filter = filters[index];
                 return FilterChip(
-                  label: Text(filter),
+                  label: Text(_kHistoryStatusKeys[filter]!.tr()),
                   selected: selectedFilter == filter,
                   onSelected: (_) => setState(() => selectedFilter = filter),
                   selectedColor: AppColors.primaryBlue,
@@ -144,7 +169,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                       children: [
                         Icon(Icons.history, size: 64, color: AppColors.grey.withOpacity(0.5)),
                         const SizedBox(height: 16),
-                        Text('No service history found', style: TextStyle(color: AppColors.grey)),
+                        Text('no_service_history_found'.tr(), style: TextStyle(color: AppColors.grey)),
                       ],
                     ),
                   )
@@ -187,12 +212,12 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        item['service'],
+                                        _kHistoryServiceKeys[item['service']]!.tr(),
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        item['office'],
+                                        _kHistoryOfficeKeys[item['office']]!.tr(),
                                         style: TextStyle(fontSize: 12, color: AppColors.grey),
                                       ),
                                       const SizedBox(height: 4),
@@ -208,7 +233,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                           Icon(Icons.currency_rupee, size: 12, color: AppColors.grey),
                                           const SizedBox(width: 4),
                                           Text(
-                                            item['fee'],
+                                            'rupee_amount'.tr(args: [item['fee']]),
                                             style: TextStyle(fontSize: 11, color: AppColors.grey),
                                           ),
                                         ],
@@ -223,7 +248,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
-                                    item['status'],
+                                    _kHistoryStatusKeys[item['status']]!.tr(),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: getStatusColor(item['status']),
@@ -244,7 +269,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                 children: [
                                   const Icon(Icons.local_shipping, size: 16, color: AppColors.primaryBlue),
                                   const SizedBox(width: 8),
-                                  Text('Tracking ID: ', style: TextStyle(fontSize: 12, color: AppColors.grey)),
+                                  Text('tracking_id_label'.tr(), style: TextStyle(fontSize: 12, color: AppColors.grey)),
                                   Text(
                                     item['tracking'],
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
@@ -253,10 +278,10 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                   TextButton(
                                     onPressed: () {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Tracking details coming soon'), behavior: SnackBarBehavior.floating),
+                                        SnackBar(content: Text('tracking_details_coming_soon'.tr()), behavior: SnackBarBehavior.floating),
                                       );
                                     },
-                                    child: const Text('Track'),
+                                    child: Text('track_button'.tr()),
                                   ),
                                 ],
                               ),

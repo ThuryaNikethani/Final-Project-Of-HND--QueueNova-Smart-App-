@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
+
+const Map<String, String> _kCategoryKeys = {
+  'All': 'filter_all',
+  'Passport': 'passport',
+  'NIC': 'nic_category',
+  'License': 'category_license',
+  'Certificate': 'category_certificate',
+  'Other': 'category_other',
+};
 
 class ServicesScreen extends StatefulWidget {
   final String initialFilter;
@@ -20,122 +30,134 @@ class _ServicesScreenState extends State<ServicesScreen> {
   final List<Map<String, dynamic>> allServices = [
     {
       'name': 'Passport Renewal',
+      'nameKey': 'svc_passport_renewal_name',
+      'descKey': 'svc_passport_renewal_desc',
+      'reqKey': 'svc_passport_renewal_req',
       'category': 'Passport',
       'icon': Icons.airplane_ticket,
-      'time': '30 min',
-      'fee': 'Rs. 5,000',
-      'description': 'Renew your existing passport',
-      'requirements': 'Old passport, NIC, Photos',
+      'time': 30,
+      'fee': '5,000',
       'popular': true,
     },
     {
       'name': 'New Passport Application',
+      'nameKey': 'svc_new_passport_name',
+      'descKey': 'svc_new_passport_desc',
+      'reqKey': 'svc_new_passport_req',
       'category': 'Passport',
       'icon': Icons.airplane_ticket,
-      'time': '45 min',
-      'fee': 'Rs. 8,000',
-      'description': 'Apply for a new passport',
-      'requirements': 'NIC, Birth certificate, Photos',
+      'time': 45,
+      'fee': '8,000',
       'popular': false,
     },
     {
       'name': 'National ID Card',
+      'nameKey': 'svc_national_id_name',
+      'descKey': 'svc_national_id_desc',
+      'reqKey': 'svc_national_id_req',
       'category': 'NIC',
       'icon': Icons.badge,
-      'time': '20 min',
-      'fee': 'Rs. 500',
-      'description': 'Apply for new NIC',
-      'requirements': 'Birth certificate, Application form',
+      'time': 20,
+      'fee': '500',
       'popular': true,
     },
     {
       'name': 'NIC Replacement',
+      'nameKey': 'svc_nic_replacement_name',
+      'descKey': 'svc_nic_replacement_desc',
+      'reqKey': 'svc_nic_replacement_req',
       'category': 'NIC',
       'icon': Icons.badge,
-      'time': '15 min',
-      'fee': 'Rs. 1,000',
-      'description': 'Replace lost or damaged NIC',
-      'requirements': 'Police report, Application form',
+      'time': 15,
+      'fee': '1,000',
       'popular': false,
     },
     {
       'name': 'Driving License',
+      'nameKey': 'svc_driving_license_name',
+      'descKey': 'svc_driving_license_desc',
+      'reqKey': 'svc_driving_license_req',
       'category': 'License',
       'icon': Icons.directions_car,
-      'time': '60 min',
-      'fee': 'Rs. 3,000',
-      'description': 'Apply for driving license',
-      'requirements': 'NIC, Medical report, Test',
+      'time': 60,
+      'fee': '3,000',
       'popular': true,
     },
     {
       'name': 'License Renewal',
+      'nameKey': 'svc_license_renewal_name',
+      'descKey': 'svc_license_renewal_desc',
+      'reqKey': 'svc_license_renewal_req',
       'category': 'License',
       'icon': Icons.directions_car,
-      'time': '25 min',
-      'fee': 'Rs. 1,500',
-      'description': 'Renew your driving license',
-      'requirements': 'Old license, NIC',
+      'time': 25,
+      'fee': '1,500',
       'popular': false,
     },
     {
       'name': 'Birth Certificate',
+      'nameKey': 'svc_birth_certificate_name',
+      'descKey': 'svc_birth_certificate_desc',
+      'reqKey': 'svc_birth_certificate_req',
       'category': 'Certificate',
       'icon': Icons.celebration,
-      'time': '10 min',
-      'fee': 'Rs. 200',
-      'description': 'Get birth certificate copy',
-      'requirements': 'NIC, Hospital records',
+      'time': 10,
+      'fee': '200',
       'popular': true,
     },
     {
       'name': 'Marriage Certificate',
+      'nameKey': 'svc_marriage_certificate_name',
+      'descKey': 'svc_marriage_certificate_desc',
+      'reqKey': 'svc_marriage_certificate_req',
       'category': 'Certificate',
       'icon': Icons.favorite,
-      'time': '15 min',
-      'fee': 'Rs. 300',
-      'description': 'Get marriage certificate',
-      'requirements': 'NIC, Wedding photos',
+      'time': 15,
+      'fee': '300',
       'popular': false,
     },
     {
       'name': 'Death Certificate',
+      'nameKey': 'svc_death_certificate_name',
+      'descKey': 'svc_death_certificate_desc',
+      'reqKey': 'svc_death_certificate_req',
       'category': 'Certificate',
       'icon': Icons.sentiment_dissatisfied,
-      'time': '10 min',
-      'fee': 'Rs. 200',
-      'description': 'Get death certificate',
-      'requirements': 'Medical certificate, NIC of deceased',
+      'time': 10,
+      'fee': '200',
       'popular': false,
     },
     {
       'name': 'Police Clearance',
+      'nameKey': 'svc_police_clearance_name',
+      'descKey': 'svc_police_clearance_desc',
+      'reqKey': 'svc_police_clearance_req',
       'category': 'Other',
       'icon': Icons.gavel,
-      'time': '40 min',
-      'fee': 'Rs. 1,000',
-      'description': 'Police clearance certificate',
-      'requirements': 'NIC, Fingerprints',
+      'time': 40,
+      'fee': '1,000',
       'popular': true,
     },
     {
       'name': 'Visa Services',
+      'nameKey': 'svc_visa_services_name',
+      'descKey': 'svc_visa_services_desc',
+      'reqKey': 'svc_visa_services_req',
       'category': 'Other',
       'icon': Icons.flight,
-      'time': '50 min',
-      'fee': 'Rs. 4,000',
-      'description': 'Visa application services',
-      'requirements': 'Passport, Photos, Application',
+      'time': 50,
+      'fee': '4,000',
       'popular': false,
     },
     {
       'name': 'Land Registration',
+      'nameKey': 'svc_land_registration_name',
+      'descKey': 'svc_land_registration_desc',
+      'reqKey': 'svc_land_registration_req',
       'category': 'Other',
       'icon': Icons.description,
-      'time': '90 min',
-      'fee': 'Rs. 5,000',
-      'description': 'Register land documents',
-      'requirements': 'Deed, Survey plan, NIC',
+      'time': 90,
+      'fee': '5,000',
       'popular': false,
     },
   ];
@@ -162,7 +184,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('All Services'),
+        title: Text('all_services'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -178,7 +200,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
             child: TextField(
               onChanged: (value) => setState(() => searchQuery = value),
               decoration: InputDecoration(
-                hintText: 'Search services...',
+                hintText: 'search_services_hint'.tr(),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: searchQuery.isNotEmpty
                     ? IconButton(
@@ -207,7 +229,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 final category = categories[index];
                 final isSelected = selectedCategory == category;
                 return FilterChip(
-                  label: Text(category),
+                  label: Text(_kCategoryKeys[category]!.tr()),
                   selected: isSelected,
                   onSelected: (_) => setState(() => selectedCategory = category),
                   selectedColor: AppColors.primaryBlue,
@@ -229,13 +251,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${filteredList.length} services found',
+                  'services_found_count'.tr(args: ['${filteredList.length}']),
                   style: TextStyle(fontSize: 12, color: AppColors.grey),
                 ),
                 if (selectedCategory != 'All')
                   TextButton(
                     onPressed: () => setState(() => selectedCategory = 'All'),
-                    child: const Text('Clear Filter'),
+                    child: Text('clear_filter'.tr()),
                   ),
               ],
             ),
@@ -251,12 +273,12 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         Icon(Icons.search_off, size: 80, color: AppColors.grey.withOpacity(0.5)),
                         const SizedBox(height: 16),
                         Text(
-                          'No services found',
+                          'no_services_found'.tr(),
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: AppColors.grey),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Try a different search term',
+                          'try_different_search'.tr(),
                           style: TextStyle(fontSize: 14, color: AppColors.grey),
                         ),
                       ],
@@ -308,7 +330,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                               children: [
                                                 Expanded(
                                                   child: Text(
-                                                    service['name'],
+                                                    (service['nameKey'] as String).tr(),
                                                     style: const TextStyle(
                                                       fontWeight: FontWeight.bold,
                                                       fontSize: 16,
@@ -323,16 +345,16 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                                       color: AppColors.warning.withOpacity(0.1),
                                                       borderRadius: BorderRadius.circular(12),
                                                     ),
-                                                    child: const Text(
-                                                      'Popular',
-                                                      style: TextStyle(fontSize: 10, color: AppColors.warning, fontWeight: FontWeight.w600),
+                                                    child: Text(
+                                                      'popular_badge'.tr(),
+                                                      style: const TextStyle(fontSize: 10, color: AppColors.warning, fontWeight: FontWeight.w600),
                                                     ),
                                                   ),
                                               ],
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              service['description'],
+                                              (service['descKey'] as String).tr(),
                                               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                                             ),
                                           ],
@@ -343,9 +365,9 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                   const SizedBox(height: 14),
                                   Row(
                                     children: [
-                                      _buildInfoChip(Icons.timer, service['time'], AppColors.info),
+                                      _buildInfoChip(Icons.timer, 'minutes_suffix'.tr(args: ['${service['time']}']), AppColors.info),
                                       const SizedBox(width: 10),
-                                      _buildInfoChip(Icons.currency_rupee, service['fee'], AppColors.success),
+                                      _buildInfoChip(Icons.currency_rupee, 'rupee_amount'.tr(args: [service['fee']]), AppColors.success),
                                       const Spacer(),
                                       ElevatedButton(
                                         onPressed: () {
@@ -359,7 +381,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                         ),
-                                        child: const Text('Book Now', style: TextStyle(fontSize: 13)),
+                                        child: Text('book_now'.tr(), style: const TextStyle(fontSize: 13)),
                                       ),
                                     ],
                                   ),
@@ -375,7 +397,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                         const Icon(Icons.description_outlined, size: 14, color: AppColors.grey),
                                         const SizedBox(width: 6),
                                         Text(
-                                          'Required: ${service['requirements']}',
+                                          'required_label'.tr(args: [(service['reqKey'] as String).tr()]),
                                           style: TextStyle(fontSize: 11, color: AppColors.grey),
                                         ),
                                       ],

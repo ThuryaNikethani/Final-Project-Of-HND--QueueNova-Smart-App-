@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/document_vault_service.dart';
 
@@ -33,12 +34,12 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Document'),
-        content: const Text('Are you sure you want to delete this document?'),
+        title: Text('delete_document_title'.tr()),
+        content: Text('confirm_delete_document'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -46,11 +47,11 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
               await _loadDocuments();
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Document deleted'), backgroundColor: AppColors.success),
+                SnackBar(content: Text('document_deleted'.tr()), backgroundColor: AppColors.success),
               );
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text('delete_button'.tr()),
           ),
         ],
       ),
@@ -61,7 +62,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Documents'),
+        title: Text('my_documents'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -75,12 +76,12 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
                       Icon(Icons.folder_open, size: 80, color: AppColors.grey.withOpacity(0.5)),
                       const SizedBox(height: 16),
                       Text(
-                        'No Documents',
+                        'no_documents'.tr(),
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: AppColors.grey),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Upload documents from home screen',
+                        'upload_documents_from_home'.tr(),
                         style: TextStyle(fontSize: 14, color: AppColors.grey),
                       ),
                     ],
@@ -136,7 +137,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      'Shared with ${doc.sharedWith.length} department(s)',
+                                      'shared_with_departments_count'.tr(args: ['${doc.sharedWith.length}']),
                                       style: TextStyle(fontSize: 10, color: AppColors.success),
                                     ),
                                   ),

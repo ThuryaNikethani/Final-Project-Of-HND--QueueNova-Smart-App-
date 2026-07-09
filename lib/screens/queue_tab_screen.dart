@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
+
+const Map<String, String> _kQueueOfficeKeys = {
+  'Divisional Secretariat - Colombo': 'office_divisional_secretariat_colombo',
+  'RMV - Werahera': 'office_rmv_werahera',
+  'Passport Office - Battaramulla': 'office_passport_battaramulla',
+  'Department of Registration': 'office_department_registration',
+};
 
 class QueueTabScreen extends StatefulWidget {
   const QueueTabScreen({super.key});
@@ -25,14 +32,14 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
   ];
 
   final List<Map<String, dynamic>> queueItems = [
-    {'token': 'A-025', 'status': 'serving', 'time': '10:30 AM', 'estimated': '0 min'},
-    {'token': 'A-026', 'status': 'next', 'time': '10:35 AM', 'estimated': '5 min'},
-    {'token': 'A-027', 'status': 'waiting', 'time': '10:40 AM', 'estimated': '10 min'},
-    {'token': 'A-028', 'status': 'waiting', 'time': '10:45 AM', 'estimated': '15 min'},
-    {'token': 'A-029', 'status': 'waiting', 'time': '10:50 AM', 'estimated': '20 min'},
-    {'token': 'A-030', 'status': 'waiting', 'time': '10:55 AM', 'estimated': '25 min'},
-    {'token': 'A-031', 'status': 'waiting', 'time': '11:00 AM', 'estimated': '30 min'},
-    {'token': 'A-032', 'status': 'waiting', 'time': '11:05 AM', 'estimated': '35 min'},
+    {'token': 'A-025', 'status': 'serving', 'time': '10:30 AM', 'estimated': 0},
+    {'token': 'A-026', 'status': 'next', 'time': '10:35 AM', 'estimated': 5},
+    {'token': 'A-027', 'status': 'waiting', 'time': '10:40 AM', 'estimated': 10},
+    {'token': 'A-028', 'status': 'waiting', 'time': '10:45 AM', 'estimated': 15},
+    {'token': 'A-029', 'status': 'waiting', 'time': '10:50 AM', 'estimated': 20},
+    {'token': 'A-030', 'status': 'waiting', 'time': '10:55 AM', 'estimated': 25},
+    {'token': 'A-031', 'status': 'waiting', 'time': '11:00 AM', 'estimated': 30},
+    {'token': 'A-032', 'status': 'waiting', 'time': '11:05 AM', 'estimated': 35},
   ];
 
   String get currentTime {
@@ -43,7 +50,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Queue Status'),
+        title: Text('queue_status'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -64,7 +71,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   isExpanded: true,
                   icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryBlue),
                   items: offices.map((office) {
-                    return DropdownMenuItem(value: office, child: Text(office));
+                    return DropdownMenuItem(value: office, child: Text(_kQueueOfficeKeys[office]!.tr()));
                   }).toList(),
                   onChanged: (value) => setState(() => selectedOffice = value!),
                 ),
@@ -89,7 +96,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                     children: [
                       Column(
                         children: [
-                          const Text('Currently Serving', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          Text('currently_serving_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                           const SizedBox(height: 5),
                           Text(
                             'A-$currentServing',
@@ -104,7 +111,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                       ),
                       Column(
                         children: [
-                          const Text('Your Token', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          Text('your_token_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                           const SizedBox(height: 5),
                           Text(
                             'A-$currentToken',
@@ -119,10 +126,10 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                       ),
                       Column(
                         children: [
-                          const Text('Est. Wait', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          Text('est_wait_label'.tr(), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                           const SizedBox(height: 5),
                           Text(
-                            '${estimatedWait}min',
+                            'estimated_wait_min_suffix'.tr(args: ['$estimatedWait']),
                             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                         ],
@@ -139,8 +146,8 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Token $currentServing', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
-                      Text('Token $currentToken', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                      Text('token_number_label'.tr(args: ['$currentServing']), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                      Text('token_number_label'.tr(args: ['$currentToken']), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
                     ],
                   ),
                 ],
@@ -159,15 +166,15 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                 children: [
                   const Icon(Icons.priority_high, color: AppColors.warning),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Request Priority Queue',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                      'request_priority_queue_short'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Senior/Disabled/Emergency',
+                    'priority_categories_short'.tr(),
                     style: TextStyle(fontSize: 11, color: AppColors.grey),
                   ),
                   Switch(
@@ -176,8 +183,8 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                       setState(() => isPriority = val);
                       if (val) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Priority request submitted. You will be called shortly.'),
+                          SnackBar(
+                            content: Text('priority_request_submitted_short'.tr()),
                             backgroundColor: AppColors.success,
                             behavior: SnackBarBehavior.floating,
                           ),
@@ -206,14 +213,14 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                     decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Live updates every 30 seconds',
-                      style: TextStyle(fontSize: 12),
+                      'live_updates_interval'.tr(),
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
                   Text(
-                    'Last updated: $currentTime',
+                    'last_updated_time'.tr(args: [currentTime]),
                     style: TextStyle(fontSize: 11, color: AppColors.grey),
                   ),
                   IconButton(
@@ -231,12 +238,12 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Queue Line',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  'queue_line_title'.tr(),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  '${queueItems.length} people ahead',
+                  'people_ahead_count'.tr(args: ['${queueItems.length}']),
                   style: TextStyle(fontSize: 12, color: AppColors.grey),
                 ),
               ],
@@ -255,13 +262,13 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
 
                 if (item['status'] == 'serving') {
                   statusColor = AppColors.success;
-                  statusText = 'Serving Now';
+                  statusText = 'serving_now_status'.tr();
                 } else if (item['status'] == 'next') {
                   statusColor = AppColors.warning;
-                  statusText = 'You are Next';
+                  statusText = 'you_are_next_status'.tr();
                 } else {
                   statusColor = AppColors.grey;
-                  statusText = 'Waiting';
+                  statusText = 'waiting'.tr();
                 }
 
                 final isCurrentUser = item['token'] == 'A-$currentToken';
@@ -303,13 +310,13 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              item['status'] == 'serving' ? 'Currently Serving' : 
-                              item['status'] == 'next' ? 'Next in Line' : 'In Queue',
+                              item['status'] == 'serving' ? 'currently_serving_label'.tr() :
+                              item['status'] == 'next' ? 'next_in_line_status'.tr() : 'in_queue_status'.tr(),
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Estimated: ${item['estimated']}',
+                              'estimated_label'.tr(args: ['minutes_suffix'.tr(args: ['${item['estimated']}'])]),
                               style: TextStyle(fontSize: 11, color: AppColors.grey),
                             ),
                           ],
@@ -351,7 +358,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Keep your token number ready. You will receive a notification when it\'s your turn.',
+                      'keep_token_ready_note'.tr(),
                       style: TextStyle(fontSize: 11, color: AppColors.warning),
                     ),
                   ),

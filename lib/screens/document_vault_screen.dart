@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/document_vault_service.dart';
+
+const Map<String, String> _kDepartmentKeys = {
+  'RMV': 'dept_rmv',
+  'Divisional Secretariat': 'dept_divisional_secretariat',
+  'Passport Office': 'dept_passport_office',
+  'Registration Department': 'dept_registration_department',
+};
 
 class DocumentVaultScreen extends StatefulWidget {
   const DocumentVaultScreen({super.key});
@@ -40,18 +48,18 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Share Document With', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('share_document_with'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             ...departments.map((dept) => ListTile(
               leading: const Icon(Icons.business, color: AppColors.primaryBlue),
-              title: Text(dept),
+              title: Text(_kDepartmentKeys[dept]!.tr()),
               onTap: () async {
                 await DocumentVaultService.shareDocument(doc.id, dept);
                 Navigator.pop(context);
                 await _loadDocuments();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Document shared with $dept'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating),
+                    SnackBar(content: Text('document_shared_with'.tr(args: [_kDepartmentKeys[dept]!.tr()])), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating),
                   );
                 }
               },
@@ -66,22 +74,22 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Document Vault'),
+        title: Text('document_vault'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : documents.isEmpty
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.folder_open, size: 80, color: AppColors.grey),
-                      SizedBox(height: 16),
-                      Text('No documents yet', style: TextStyle(color: AppColors.grey)),
-                      SizedBox(height: 8),
-                      Text('Upload documents from home screen', style: TextStyle(fontSize: 12, color: AppColors.grey)),
+                      const Icon(Icons.folder_open, size: 80, color: AppColors.grey),
+                      const SizedBox(height: 16),
+                      Text('no_documents_yet'.tr(), style: const TextStyle(color: AppColors.grey)),
+                      const SizedBox(height: 8),
+                      Text('upload_documents_from_home'.tr(), style: const TextStyle(fontSize: 12, color: AppColors.grey)),
                     ],
                   ),
                 )
@@ -126,7 +134,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                                       color: AppColors.success.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: Text('Shared with ${doc.sharedWith.length} department(s)', style: TextStyle(fontSize: 10, color: AppColors.success)),
+                                    child: Text('shared_with_departments_count'.tr(args: ['${doc.sharedWith.length}']), style: const TextStyle(fontSize: 10, color: AppColors.success)),
                                   ),
                               ],
                             ),

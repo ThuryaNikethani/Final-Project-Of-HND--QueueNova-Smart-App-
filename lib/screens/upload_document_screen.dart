@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/document_vault_service.dart';
+
+const Map<String, String> _kDocCategoryKeys = {
+  'All': 'filter_all',
+  'NIC': 'nic_category',
+  'Passport': 'passport',
+  'License': 'category_license',
+  'Birth': 'birth',
+  'Other': 'category_other',
+};
 
 // Note: dart:html is NOT needed for web file picking
 // ImagePicker works on all platforms including web
@@ -41,9 +51,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Upload Document',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              'upload_document'.tr(),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             Row(
@@ -51,19 +61,19 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               children: [
                 _buildUploadOption(
                   icon: Icons.photo_library,
-                  label: 'Gallery',
+                  label: 'gallery_label'.tr(),
                   color: AppColors.primaryBlue,
                   onTap: () => _pickImage(ImageSource.gallery),
                 ),
                 _buildUploadOption(
                   icon: Icons.camera_alt,
-                  label: 'Camera',
+                  label: 'camera_label'.tr(),
                   color: AppColors.success,
                   onTap: () => _pickImage(ImageSource.camera),
                 ),
                 _buildUploadOption(
                   icon: Icons.insert_drive_file,
-                  label: 'File',
+                  label: 'file_label'.tr(),
                   color: AppColors.warning,
                   onTap: () => _pickFile(),
                 ),
@@ -84,7 +94,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'On web, camera opens file picker. For best camera experience, use Android app.',
+                        'web_camera_notice'.tr(),
                         style:
                             TextStyle(fontSize: 10, color: AppColors.warning),
                       ),
@@ -152,8 +162,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       setState(() => isUploading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to capture image. Please try again.'),
+          SnackBar(
+            content: Text('capture_image_failed'.tr()),
             backgroundColor: AppColors.error,
           ),
         );
@@ -181,8 +191,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       setState(() => isUploading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to pick file. Please try again.'),
+          SnackBar(
+            content: Text('pick_file_failed'.tr()),
             backgroundColor: AppColors.error,
           ),
         );
@@ -214,8 +224,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Document uploaded successfully'),
+      SnackBar(
+        content: Text('document_uploaded_successfully'.tr()),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
       ),
@@ -243,7 +253,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Upload Document'),
+        title: Text('upload_document'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -256,14 +266,14 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                     uploadedDocs.clear();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('All documents cleared'),
+                    SnackBar(
+                        content: Text('all_documents_cleared'.tr()),
                         backgroundColor: AppColors.warning),
                   );
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(value: 'clear', child: Text('Clear All')),
+                PopupMenuItem(value: 'clear', child: Text('clear_all_button'.tr())),
               ],
             ),
         ],
@@ -299,7 +309,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                         color: Colors.white),
                     const SizedBox(height: 12),
                     Text(
-                      isUploading ? 'Uploading...' : 'Tap to Upload Document',
+                      isUploading ? 'uploading_label'.tr() : 'tap_to_upload_document'.tr(),
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -311,34 +321,34 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                       children: [
                         Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.photo_library,
+                          children: [
+                            const Icon(Icons.photo_library,
                                 size: 14, color: Colors.white70),
-                            SizedBox(width: 4),
-                            Text('Gallery',
-                                style: TextStyle(
+                            const SizedBox(width: 4),
+                            Text('gallery_label'.tr(),
+                                style: const TextStyle(
                                     color: Colors.white70, fontSize: 11)),
                           ],
                         ),
                         Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.camera_alt,
+                          children: [
+                            const Icon(Icons.camera_alt,
                                 size: 14, color: Colors.white70),
-                            SizedBox(width: 4),
-                            Text('Camera',
-                                style: TextStyle(
+                            const SizedBox(width: 4),
+                            Text('camera_label'.tr(),
+                                style: const TextStyle(
                                     color: Colors.white70, fontSize: 11)),
                           ],
                         ),
                         Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.insert_drive_file,
+                          children: [
+                            const Icon(Icons.insert_drive_file,
                                 size: 14, color: Colors.white70),
-                            SizedBox(width: 4),
-                            Text('File',
-                                style: TextStyle(
+                            const SizedBox(width: 4),
+                            Text('file_label'.tr(),
+                                style: const TextStyle(
                                     color: Colors.white70, fontSize: 11)),
                           ],
                         ),
@@ -349,9 +359,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Quick Upload',
-              style: TextStyle(
+            Text(
+              'quick_upload'.tr(),
+              style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1F2937)),
@@ -366,20 +376,20 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               childAspectRatio: 0.9,
               children: [
                 _buildQuickUploadItem(
-                    Icons.badge, 'NIC', const Color(0xFF1A56DB)),
+                    Icons.badge, 'nic_category'.tr(), const Color(0xFF1A56DB)),
                 _buildQuickUploadItem(
-                    Icons.airplane_ticket, 'Passport', const Color(0xFF10B981)),
+                    Icons.airplane_ticket, 'passport'.tr(), const Color(0xFF10B981)),
                 _buildQuickUploadItem(
-                    Icons.directions_car, 'License', const Color(0xFFF59E0B)),
+                    Icons.directions_car, 'category_license'.tr(), const Color(0xFFF59E0B)),
                 _buildQuickUploadItem(
-                    Icons.description, 'Other', const Color(0xFF8B5CF6)),
+                    Icons.description, 'category_other'.tr(), const Color(0xFF8B5CF6)),
               ],
             ),
             const SizedBox(height: 24),
             if (uploadedDocs.isNotEmpty) ...[
-              const Text(
-                'Filter by Category',
-                style: TextStyle(
+              Text(
+                'filter_by_category'.tr(),
+                style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                     color: Color(0xFF1F2937)),
@@ -395,7 +405,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                     final category = categories[index];
                     final isSelected = selectedCategory == category;
                     return FilterChip(
-                      label: Text(category),
+                      label: Text(_kDocCategoryKeys[category]!.tr()),
                       selected: isSelected,
                       onSelected: (_) =>
                           setState(() => selectedCategory = category),
@@ -415,15 +425,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'My Documents',
-                    style: TextStyle(
+                  Text(
+                    'my_documents'.tr(),
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1F2937)),
                   ),
                   Text(
-                    '${filteredDocs.length} items',
+                    'items_count'.tr(args: ['${filteredDocs.length}']),
                     style: TextStyle(fontSize: 12, color: AppColors.grey),
                   ),
                 ],
@@ -483,7 +493,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      doc['category'],
+                                      _kDocCategoryKeys[doc['category']]!.tr(),
                                       style: TextStyle(
                                           fontSize: 9,
                                           color: AppColors.primaryBlue),
@@ -523,12 +533,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                         size: 64, color: AppColors.grey.withOpacity(0.5)),
                     const SizedBox(height: 12),
                     Text(
-                      'No documents uploaded yet',
+                      'no_documents_uploaded_yet'.tr(),
                       style: TextStyle(color: AppColors.grey, fontSize: 14),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Tap the upload area to get started',
+                      'tap_upload_area_hint'.tr(),
                       style: TextStyle(fontSize: 12, color: AppColors.grey),
                     ),
                   ],

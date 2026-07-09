@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:intl/intl.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/models/appointment_model.dart';
 import 'package:queuenova_mobile/services/appointment_service.dart';
@@ -49,7 +49,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My QR Code'),
+        title: Text('my_qr_code'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -120,7 +120,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              const Text('Show this QR code at the service center', style: TextStyle(fontSize: 12, color: AppColors.grey)),
+                              Text('show_qr_at_center'.tr(), style: const TextStyle(fontSize: 12, color: AppColors.grey)),
                             ],
                           ),
                         ),
@@ -135,17 +135,17 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                           ),
                           child: Column(
                             children: [
-                              _buildDetailRow('Service', selectedApt.service),
+                              _buildDetailRow('qr_detail_service_label'.tr(), selectedApt.service),
                               const Divider(height: 24),
-                              _buildDetailRow('Office', selectedApt.office),
+                              _buildDetailRow('qr_detail_office_label'.tr(), selectedApt.office),
                               const Divider(height: 24),
-                              _buildDetailRow('Date', DateFormat('dd MMM yyyy').format(selectedApt.date)),
+                              _buildDetailRow('qr_detail_date_label'.tr(), DateFormat('dd MMM yyyy').format(selectedApt.date)),
                               const Divider(height: 24),
-                              _buildDetailRow('Time', selectedApt.time),
+                              _buildDetailRow('qr_detail_time_label'.tr(), selectedApt.time),
                               const Divider(height: 24),
-                              _buildDetailRow('Token Number', selectedApt.token),
+                              _buildDetailRow('qr_detail_token_label'.tr(), selectedApt.token),
                               const Divider(height: 24),
-                              _buildDetailRow('Status', selectedApt.status),
+                              _buildDetailRow('qr_detail_status_label'.tr(), selectedApt.status),
                             ],
                           ),
                         ),
@@ -161,13 +161,13 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                           children: [
                             const Icon(Icons.info_outline, color: AppColors.warning),
                             const SizedBox(width: 12),
-                            const Expanded(
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('How to use', style: TextStyle(fontWeight: FontWeight.bold)),
-                                  SizedBox(height: 4),
-                                  Text('1. Show this QR code at the reception counter\n2. Officer will scan to verify your appointment\n3. Your queue token will be activated', style: TextStyle(fontSize: 12)),
+                                  Text('how_to_use'.tr(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text('qr_instructions'.tr(), style: const TextStyle(fontSize: 12)),
                                 ],
                               ),
                             ),
@@ -187,16 +187,16 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
         children: [
           Icon(Icons.qr_code, size: 80, color: AppColors.grey.withOpacity(0.5)),
           const SizedBox(height: 16),
-          const Text('No Upcoming Appointments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('no_upcoming_appointments'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text('Book an appointment to get your QR code', style: TextStyle(fontSize: 14, color: AppColors.grey)),
+          Text('book_appointment_get_qr'.tr(), style: TextStyle(fontSize: 14, color: AppColors.grey)),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
             },
             icon: const Icon(Icons.calendar_today),
-            label: const Text('Book Appointment'),
+            label: Text('book_appointment'.tr()),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

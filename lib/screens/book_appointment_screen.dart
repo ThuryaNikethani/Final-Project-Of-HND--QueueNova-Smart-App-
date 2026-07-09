@@ -1,13 +1,54 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/models/appointment_model.dart';
 import 'package:queuenova_mobile/services/appointment_service.dart';
 import 'package:queuenova_mobile/services/office_settings_service.dart';
 import 'package:queuenova_mobile/screens/payment_screen.dart';
+
+const Map<String, String> _kBookServiceKeys = {
+  'Passport Renewal': 'svc_passport_renewal_name',
+  'New Passport Application': 'svc_new_passport_name',
+  'National ID Card': 'svc_national_id_name',
+  'NIC Replacement': 'svc_nic_replacement_name',
+  'Driving License': 'svc_driving_license_name',
+  'License Renewal': 'svc_license_renewal_name',
+  'Birth Certificate': 'svc_birth_certificate_name',
+  'Marriage Certificate': 'svc_marriage_certificate_name',
+  'Death Certificate': 'svc_death_certificate_name',
+  'Police Clearance': 'svc_police_clearance_name',
+  'Visa Services': 'svc_visa_services_name',
+  'Land Registration': 'svc_land_registration_name',
+};
+
+const Map<String, String> _kPayMethodKeys = {
+  'Pay at Counter': 'pay_at_counter',
+  'Pay Online': 'pay_online',
+};
+
+const Map<String, String> _kBookOfficeKeys = {
+  'Divisional Secretariat - Colombo': 'office_divisional_secretariat_colombo',
+  'Divisional Secretariat - Kandy': 'office_divisional_secretariat_kandy',
+  'Divisional Secretariat - Galle': 'office_ds_galle',
+  'Divisional Secretariat - Kurunegala': 'office_ds_kurunegala',
+  'RMV - Werahera': 'office_rmv_werahera',
+  'RMV - Kiribathgoda': 'office_rmv_kiribathgoda',
+  'RMV - Kandy': 'office_rmv_kandy',
+  'Passport Office - Battaramulla': 'office_passport_battaramulla',
+  'Passport Office - Kandy': 'office_passport_kandy',
+  'Department of Registration - Colombo': 'office_dept_registration_colombo',
+  'NIC Service Center - Colombo': 'office_nic_center_colombo',
+  'NIC Service Center - Kandy': 'office_nic_center_kandy',
+  'Immigration Department - Battaramulla': 'office_immigration_battaramulla',
+  'Land Registry Office - Colombo': 'office_land_registry_colombo',
+  'Land Registry Office - Kandy': 'office_land_registry_kandy',
+  'Municipal Council - Colombo': 'office_municipal_council_colombo',
+  'Municipal Council - Kandy': 'office_municipal_council_kandy',
+  'Registrar General Department - Colombo': 'office_registrar_general_colombo',
+};
 
 class BookAppointmentScreen extends StatefulWidget {
   final AppointmentModel? rescheduleAppointment;
@@ -58,7 +99,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'old_passport',
             name: 'Old Passport',
+            nameKey: 'doc_old_passport',
             description: 'Previous passport (if available)',
+            descKey: 'doc_old_passport_desc',
             icon: Icons.airplane_ticket_outlined,
             required: false,
             selected: false,
@@ -66,7 +109,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport_photo',
             name: 'Passport Size Photo',
+            nameKey: 'doc_passport_photo',
             description: 'Recent passport size photo (white background)',
+            descKey: 'doc_passport_photo_white_bg_desc',
             icon: Icons.photo_camera_outlined,
             required: false,
             selected: false,
@@ -74,7 +119,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -82,7 +129,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'proof_of_address',
             name: 'Proof of Address',
+            nameKey: 'doc_proof_of_address',
             description: 'Utility bill or bank statement',
+            descKey: 'doc_proof_of_address_desc',
             icon: Icons.home_outlined,
             required: false,
             selected: false,
@@ -94,7 +143,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'birth_certificate',
             name: 'Birth Certificate',
+            nameKey: 'svc_birth_certificate_name',
             description: 'Copy of birth certificate',
+            descKey: 'doc_birth_cert_copy_desc',
             icon: Icons.celebration_outlined,
             required: false,
             selected: false,
@@ -102,7 +153,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'proof_of_address',
             name: 'Proof of Address',
+            nameKey: 'doc_proof_of_address',
             description: 'Utility bill or bank statement',
+            descKey: 'doc_proof_of_address_desc',
             icon: Icons.home_outlined,
             required: false,
             selected: false,
@@ -110,7 +163,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'police_report',
             name: 'Police Report',
+            nameKey: 'doc_police_report',
             description: 'For lost NIC replacement',
+            descKey: 'doc_police_report_desc',
             icon: Icons.report_outlined,
             required: false,
             selected: false,
@@ -121,7 +176,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'medical_certificate',
             name: 'Medical Certificate',
+            nameKey: 'doc_medical_certificate',
             description: 'Medical fitness certificate',
+            descKey: 'doc_medical_fitness_desc',
             icon: Icons.health_and_safety_outlined,
             required: false,
             selected: false,
@@ -129,7 +186,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -137,7 +196,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport_photo',
             name: 'Passport Size Photo',
+            nameKey: 'doc_passport_photo',
             description: 'Recent passport size photo',
+            descKey: 'doc_passport_photo_desc',
             icon: Icons.photo_camera_outlined,
             required: false,
             selected: false,
@@ -148,7 +209,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'old_license',
             name: 'Old Driving License',
+            nameKey: 'doc_old_license',
             description: 'Previous driving license',
+            descKey: 'doc_old_license_desc',
             icon: Icons.directions_car_outlined,
             required: false,
             selected: false,
@@ -156,7 +219,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -164,7 +229,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport_photo',
             name: 'Passport Size Photo',
+            nameKey: 'doc_passport_photo',
             description: 'Recent passport size photo',
+            descKey: 'doc_passport_photo_desc',
             icon: Icons.photo_camera_outlined,
             required: false,
             selected: false,
@@ -175,7 +242,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'parents_nic',
             name: 'Parents NIC',
+            nameKey: 'doc_parents_nic',
             description: 'NIC of both parents',
+            descKey: 'doc_parents_nic_desc',
             icon: Icons.people_outline,
             required: false,
             selected: false,
@@ -183,7 +252,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'hospital_record',
             name: 'Hospital Birth Record',
+            nameKey: 'doc_hospital_birth_record',
             description: 'Birth record from hospital',
+            descKey: 'doc_hospital_birth_record_desc',
             icon: Icons.local_hospital_outlined,
             required: false,
             selected: false,
@@ -194,7 +265,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'parties_nic',
             name: 'NIC of Both Parties',
+            nameKey: 'doc_parties_nic',
             description: 'NIC of bride and groom',
+            descKey: 'doc_parties_nic_desc',
             icon: Icons.people_outline,
             required: false,
             selected: false,
@@ -202,7 +275,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'birth_certificates',
             name: 'Birth Certificates',
+            nameKey: 'doc_birth_certificates',
             description: 'Birth certificates of both parties',
+            descKey: 'doc_birth_certificates_desc',
             icon: Icons.celebration_outlined,
             required: false,
             selected: false,
@@ -213,7 +288,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'medical_certificate',
             name: 'Medical Certificate',
+            nameKey: 'doc_medical_certificate',
             description: 'Medical certificate of death',
+            descKey: 'doc_medical_death_desc',
             icon: Icons.health_and_safety_outlined,
             required: false,
             selected: false,
@@ -221,7 +298,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'deceased_nic',
             name: 'Deceased NIC',
+            nameKey: 'doc_deceased_nic',
             description: 'NIC of the deceased',
+            descKey: 'doc_deceased_nic_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -232,7 +311,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -240,7 +321,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport_photo',
             name: 'Passport Size Photo',
+            nameKey: 'doc_passport_photo',
             description: 'Recent passport size photo',
+            descKey: 'doc_passport_photo_desc',
             icon: Icons.photo_camera_outlined,
             required: false,
             selected: false,
@@ -248,7 +331,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'proof_of_address',
             name: 'Proof of Address',
+            nameKey: 'doc_proof_of_address',
             description: 'Utility bill or bank statement',
+            descKey: 'doc_proof_of_address_desc',
             icon: Icons.home_outlined,
             required: false,
             selected: false,
@@ -259,7 +344,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport',
             name: 'Passport',
+            nameKey: 'passport',
             description: 'Current passport copy',
+            descKey: 'doc_current_passport_desc',
             icon: Icons.airplane_ticket_outlined,
             required: false,
             selected: false,
@@ -267,7 +354,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'passport_photo',
             name: 'Passport Size Photo',
+            nameKey: 'doc_passport_photo',
             description: 'Recent passport size photo',
+            descKey: 'doc_passport_photo_desc',
             icon: Icons.photo_camera_outlined,
             required: false,
             selected: false,
@@ -275,7 +364,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'proof_of_address',
             name: 'Proof of Address',
+            nameKey: 'doc_proof_of_address',
             description: 'Utility bill or bank statement',
+            descKey: 'doc_proof_of_address_desc',
             icon: Icons.home_outlined,
             required: false,
             selected: false,
@@ -286,7 +377,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'deed',
             name: 'Deed',
+            nameKey: 'doc_deed',
             description: 'Original land deed',
+            descKey: 'doc_deed_desc',
             icon: Icons.description_outlined,
             required: false,
             selected: false,
@@ -294,7 +387,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -302,7 +397,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'survey_plan',
             name: 'Survey Plan',
+            nameKey: 'doc_survey_plan',
             description: 'Land survey plan',
+            descKey: 'doc_survey_plan_desc',
             icon: Icons.map_outlined,
             required: false,
             selected: false,
@@ -313,7 +410,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           DocumentRequirement(
             id: 'nic',
             name: 'National ID Card',
+            nameKey: 'svc_national_id_name',
             description: 'Copy of your NIC',
+            descKey: 'doc_nic_copy_desc',
             icon: Icons.badge_outlined,
             required: false,
             selected: false,
@@ -455,7 +554,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$fileName uploaded successfully'),
+          content: Text('file_uploaded_successfully'.tr(args: [fileName])),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
@@ -533,11 +632,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.check_circle, color: AppColors.success),
-            SizedBox(width: 10),
-            Text('Appointment Confirmed'),
+            const Icon(Icons.check_circle, color: AppColors.success),
+            const SizedBox(width: 10),
+            Text('appointment_confirmed'.tr()),
           ],
         ),
         content: Column(
@@ -552,11 +651,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
               child: Column(
                 children: [
-                  Text(selectedService,
+                  Text(_kBookServiceKeys[selectedService]!.tr(),
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
-                  Text(selectedOffice,
+                  Text(_kBookOfficeKeys[selectedOffice]!.tr(),
                       style:
                           const TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 10),
@@ -569,17 +668,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Token: $tokenNumber',
+                    'token_label'.tr(args: [tokenNumber]),
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
                   const Divider(color: Colors.white70, height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Fee:',
-                          style: TextStyle(color: Colors.white70)),
+                      Text('total_fee_label'.tr(),
+                          style: const TextStyle(color: Colors.white70)),
                       Text(
-                        'Rs. ${_selectedFee.toStringAsFixed(0)}',
+                        'rupee_amount'.tr(args: [_selectedFee.toStringAsFixed(0)]),
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -591,10 +690,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Payment Method:',
-                          style: TextStyle(color: Colors.white70)),
+                      Text('payment_method_colon'.tr(),
+                          style: const TextStyle(color: Colors.white70)),
                       Text(
-                        selectedPaymentMethod,
+                        _kPayMethodKeys[selectedPaymentMethod]!.tr(),
                         style: const TextStyle(color: Colors.white),
                       ),
                     ],
@@ -606,15 +705,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'Pay at counter when you visit',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
+                    child: Text(
+                      'pay_at_counter_note'.tr(),
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                   const SizedBox(height: 8),
                   if (_selectedFiles.isNotEmpty)
                     Text(
-                      'Documents uploaded: ${_selectedFiles.length} file(s)',
+                      'documents_uploaded_count'.tr(args: ['${_selectedFiles.length}']),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -624,10 +723,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
             ),
             const SizedBox(height: 15),
-            const Text('QR code has been generated for this appointment.'),
+            Text('qr_code_generated_note'.tr()),
             const SizedBox(height: 8),
-            const Text(
-                'Show QR code at the service center for check-in and payment.'),
+            Text('show_qr_checkin_payment'.tr()),
           ],
         ),
         actions: [
@@ -636,7 +734,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            child: const Text('OK'),
+            child: Text('ok'.tr()),
           ),
         ],
       ),
@@ -746,7 +844,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       hoursText =
           '${start.format(context)} – ${end.format(context)}';
       if (lunchBreaks.isNotEmpty) {
-        hoursText += '  •  Lunch: ${lunchBreaks.join(', ')}';
+        hoursText += '  •  ${'lunch_break_note'.tr(args: [lunchBreaks.join(', ')])}';
       }
     }
 
@@ -795,10 +893,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 const Icon(Icons.warning_amber_rounded,
                     color: AppColors.warning, size: 18),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Selected time is outside working hours',
-                    style: TextStyle(
+                    'outside_working_hours'.tr(),
+                    style: const TextStyle(
                         color: AppColors.warning,
                         fontSize: 13,
                         fontWeight: FontWeight.w500),
@@ -811,7 +909,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               Padding(
                 padding: const EdgeInsets.only(left: 26),
                 child: Text(
-                  'Working hours: $hoursText',
+                  'working_hours_label'.tr(args: [hoursText]),
                   style: const TextStyle(
                       color: AppColors.warning, fontSize: 11),
                 ),
@@ -833,14 +931,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.check_circle_outline,
+              const Icon(Icons.check_circle_outline,
                   color: AppColors.success, size: 18),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Text(
-                'Office is open',
-                style: TextStyle(
+                'office_is_open'.tr(),
+                style: const TextStyle(
                     color: AppColors.success,
                     fontSize: 13,
                     fontWeight: FontWeight.w500),
@@ -852,7 +950,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             Padding(
               padding: const EdgeInsets.only(left: 26),
               child: Text(
-                'Working hours: $hoursText',
+                'working_hours_label'.tr(args: [hoursText]),
                 style: const TextStyle(
                     color: AppColors.success, fontSize: 11),
               ),
@@ -870,7 +968,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return Scaffold(
       appBar: AppBar(
         title:
-            Text(_isReschedule ? 'Reschedule Appointment' : 'Book Appointment'),
+            Text(_isReschedule ? 'reschedule_appointment_title'.tr() : 'book_appointment'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -880,8 +978,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Service Selection
-            const Text('Select Service',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('select_service'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -895,7 +993,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   isExpanded: true,
                   items: services.map((service) {
                     return DropdownMenuItem(
-                        value: service, child: Text(service));
+                        value: service, child: Text(_kBookServiceKeys[service]!.tr()));
                   }).toList(),
                   onChanged: (value) {
                     setState(() {
@@ -912,8 +1010,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // Office Selection
-            const Text('Select Office',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('select_office'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -926,7 +1024,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   value: selectedOffice,
                   isExpanded: true,
                   items: offices.map((office) {
-                    return DropdownMenuItem(value: office, child: Text(office));
+                    return DropdownMenuItem(value: office, child: Text(_kBookOfficeKeys[office]!.tr()));
                   }).toList(),
                   onChanged: (value) {
                     setState(() => selectedOffice = value!);
@@ -938,8 +1036,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // Date Selection
-            const Text('Select Date',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('select_date'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: _selectDate,
@@ -965,8 +1063,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // Time Selection
-            const Text('Select Time',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('select_time'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: _selectTime,
@@ -992,9 +1090,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // ==================== OPTIONAL DOCUMENTS SECTION ====================
-            const Text(
-              'Upload Documents (Optional)',
-              style: TextStyle(
+            Text(
+              'upload_documents_optional'.tr(),
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF1F2937),
@@ -1002,7 +1100,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'You can upload supporting documents if available (${_selectedFiles.length} uploaded)',
+              'upload_supporting_docs_count'.tr(args: ['${_selectedFiles.length}']),
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey,
@@ -1016,8 +1114,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // Payment Method
-            const Text('Payment Method',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('payment_method'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1050,7 +1148,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Pay at Counter',
+                            'pay_at_counter'.tr(),
                             style: TextStyle(
                               color: selectedPaymentMethod == 'Pay at Counter'
                                   ? Colors.white
@@ -1092,7 +1190,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Pay Online',
+                            'pay_online'.tr(),
                             style: TextStyle(
                               color: selectedPaymentMethod == 'Pay Online'
                                   ? Colors.white
@@ -1121,7 +1219,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'You will be redirected to payment gateway after booking',
+                        'redirect_payment_gateway_note'.tr(),
                         style: TextStyle(
                             fontSize: 12, color: AppColors.primaryBlue),
                       ),
@@ -1154,11 +1252,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Service Fee',
+                        Text('service_fee_label'.tr(),
                             style:
-                                TextStyle(color: Colors.white70, fontSize: 12)),
+                                const TextStyle(color: Colors.white70, fontSize: 12)),
                         Text(
-                          'Rs. ${_selectedFee.toStringAsFixed(0)}',
+                          'rupee_amount'.tr(args: [_selectedFee.toStringAsFixed(0)]),
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
@@ -1176,8 +1274,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ),
                     child: Text(
                       selectedPaymentMethod == 'Pay Online'
-                          ? 'Online'
-                          : 'Counter',
+                          ? 'online_label'.tr()
+                          : 'counter_label'.tr(),
                       style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
@@ -1187,14 +1285,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 20),
 
             // Additional Notes
-            const Text('Additional Notes (Optional)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('additional_notes_optional'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
               controller: _notesController,
               maxLines: 3,
               decoration: InputDecoration(
-                hintText: 'Any special requirements or notes...',
+                hintText: 'special_requirements_hint'.tr(),
                 filled: true,
                 fillColor: AppColors.offWhite,
                 border: OutlineInputBorder(
@@ -1225,8 +1323,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       )
                     : Text(
                         _isReschedule
-                            ? 'Confirm Reschedule'
-                            : 'Confirm Appointment',
+                            ? 'confirm_reschedule'.tr()
+                            : 'confirm_appointment'.tr(),
                         style: const TextStyle(fontSize: 16)),
               ),
             ),
@@ -1291,7 +1389,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 Row(
                   children: [
                     Text(
-                      doc.name,
+                      doc.nameKey.tr(),
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -1305,7 +1403,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        'Optional',
+                        'optional_label'.tr(),
                         style: TextStyle(
                           fontSize: 9,
                           color: Colors.grey.shade600,
@@ -1316,7 +1414,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ],
                 ),
                 Text(
-                  doc.description,
+                  doc.descKey.tr(),
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey.shade600,
@@ -1342,7 +1440,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            _selectedFileNames[doc.id] ?? 'File uploaded',
+                            _selectedFileNames[doc.id] ?? 'file_uploaded_default'.tr(),
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.green.shade700,
@@ -1372,7 +1470,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   icon: const Icon(Icons.refresh, size: 18),
                   onPressed: () => _pickFile(doc.id),
                   color: AppColors.primaryBlue,
-                  tooltip: 'Change file',
+                  tooltip: 'change_file_tooltip'.tr(),
                 )
               : ElevatedButton(
                   onPressed: () => _pickFile(doc.id),
@@ -1386,7 +1484,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                   ),
-                  child: const Text('Upload'),
+                  child: Text('upload_label'.tr()),
                 ),
         ],
       ),
@@ -1399,7 +1497,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 class DocumentRequirement {
   final String id;
   final String name;
+  final String nameKey;
   final String description;
+  final String descKey;
   final IconData icon;
   final bool required;
   bool selected;
@@ -1407,7 +1507,9 @@ class DocumentRequirement {
   DocumentRequirement({
     required this.id,
     required this.name,
+    required this.nameKey,
     required this.description,
+    required this.descKey,
     required this.icon,
     required this.required,
     this.selected = false,

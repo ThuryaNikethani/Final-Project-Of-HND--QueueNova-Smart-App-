@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
@@ -45,10 +46,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       if (!moderation.safe) {
         if (mounted) setState(() => _isLoading = false);
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'This photo looks inappropriate and cannot be used as your profile picture. Please choose another one.',
-            ),
+          SnackBar(
+            content: Text('photo_inappropriate_error'.tr()),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -64,8 +63,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
 
       if (mounted) setState(() => _isLoading = false);
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Profile picture updated successfully'),
+        SnackBar(
+          content: Text('profile_picture_updated'.tr()),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
         ),
@@ -75,8 +74,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       debugPrint('Profile picture upload timed out');
       if (mounted) setState(() => _isLoading = false);
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Upload timed out. Check your connection and try again.'),
+        SnackBar(
+          content: Text('upload_timed_out'.tr()),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -85,8 +84,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       debugPrint('Profile picture save failed: $e');
       if (mounted) setState(() => _isLoading = false);
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to save photo. Please try again.'),
+        SnackBar(
+          content: Text('failed_save_photo'.tr()),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -99,13 +98,12 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Remove Profile Picture'),
-        content: const Text(
-            'Are you sure you want to remove your profile picture?'),
+        title: Text('remove_profile_picture_title'.tr()),
+        content: Text('remove_profile_picture_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -122,8 +120,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
                 await authService.updateProfilePhoto(null).timeout(const Duration(seconds: 15));
                 if (mounted) setState(() => _isLoading = false);
                 messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Profile picture removed'),
+                  SnackBar(
+                    content: Text('profile_picture_removed'.tr()),
                     backgroundColor: AppColors.warning,
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -133,8 +131,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
                 debugPrint('Profile picture removal failed: $e');
                 if (mounted) setState(() => _isLoading = false);
                 messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Failed to remove photo. Please try again.'),
+                  SnackBar(
+                    content: Text('failed_remove_photo'.tr()),
                     backgroundColor: AppColors.error,
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -142,7 +140,7 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
               }
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Remove'),
+            child: Text('remove_button'.tr()),
           ),
         ],
       ),
@@ -211,16 +209,16 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile Picture'),
+        title: Text('profile_picture_title'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           if (photoData != null)
             TextButton(
               onPressed: _removeProfilePicture,
-              child: const Text(
-                'Remove',
-                style: TextStyle(color: AppColors.error),
+              child: Text(
+                'remove_button'.tr(),
+                style: const TextStyle(color: AppColors.error),
               ),
             ),
         ],
@@ -283,9 +281,9 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
               ),
               child: Column(
                 children: [
-                  const Text(
-                    'Choose an option to update your profile picture',
-                    style: TextStyle(
+                  Text(
+                    'choose_option_update_photo'.tr(),
+                    style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF6B7280),
                     ),
@@ -297,8 +295,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
                       Expanded(
                         child: _buildOptionCard(
                           icon: Icons.camera_alt,
-                          title: 'Camera',
-                          subtitle: 'Take a photo',
+                          title: 'camera_option'.tr(),
+                          subtitle: 'take_a_photo'.tr(),
                           color: AppColors.primaryBlue,
                           onTap: () => _pickImage(ImageSource.camera),
                         ),
@@ -307,8 +305,8 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
                       Expanded(
                         child: _buildOptionCard(
                           icon: Icons.photo_library,
-                          title: 'Gallery',
-                          subtitle: 'Choose from gallery',
+                          title: 'gallery_option'.tr(),
+                          subtitle: 'choose_from_gallery'.tr(),
                           color: AppColors.success,
                           onTap: () => _pickImage(ImageSource.gallery),
                         ),
@@ -325,16 +323,16 @@ class _EditProfilePictureScreenState extends State<EditProfilePictureScreen> {
                 color: AppColors.lightBlue,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline,
+                  const Icon(Icons.info_outline,
                       size: 16, color: AppColors.primaryBlue),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Your profile picture will be visible to government officers when you visit service centers.',
+                      'profile_picture_visibility_note'.tr(),
                       style:
-                          TextStyle(fontSize: 12, color: AppColors.primaryBlue),
+                          const TextStyle(fontSize: 12, color: AppColors.primaryBlue),
                     ),
                   ),
                 ],

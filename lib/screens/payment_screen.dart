@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/payment_service.dart';
 import 'package:queuenova_mobile/screens/payment_success_screen.dart';
+
+const Map<String, String> _kPaymentMethodKeys = {
+  'Credit Card': 'pm_credit_card',
+  'Debit Card': 'pm_debit_card',
+  'Mobile Banking': 'pm_mobile_banking',
+  'Online Banking': 'pm_online_banking',
+};
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -50,19 +58,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (selectedPaymentMethod == 'Credit Card' || selectedPaymentMethod == 'Debit Card') {
       if (cardNumberController.text.replaceAll(' ', '').length < 16) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter valid card number'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('invalid_card_number'.tr()), backgroundColor: AppColors.error),
         );
         return;
       }
       if (expiryController.text.length < 5) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter valid expiry date'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('invalid_expiry_date'.tr()), backgroundColor: AppColors.error),
         );
         return;
       }
       if (cvvController.text.length < 3) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter valid CVV'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('invalid_cvv'.tr()), backgroundColor: AppColors.error),
         );
         return;
       }
@@ -103,7 +111,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
     } catch (e) {
       setState(() => isProcessing = false);
-      _showPaymentFailedDialog('Payment failed: $e');
+      _showPaymentFailedDialog('payment_failed_error'.tr(args: ['$e']));
     }
   }
 
@@ -194,18 +202,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (!mounted) return;
       if (e.error.code == FailureCode.Canceled) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment was cancelled'),
+          SnackBar(
+            content: Text('payment_cancelled'.tr()),
             backgroundColor: Colors.orange,
           ),
         );
       } else {
-        _showPaymentFailedDialog(e.error.message ?? 'Payment failed');
+        _showPaymentFailedDialog(e.error.message ?? 'payment_failed_default'.tr());
       }
     } catch (e) {
       setState(() => isProcessing = false);
       if (!mounted) return;
-      _showPaymentFailedDialog('An unexpected error occurred: $e');
+      _showPaymentFailedDialog('unexpected_error'.tr(args: ['$e']));
     }
   }
 
@@ -214,25 +222,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.error, color: AppColors.error),
-            SizedBox(width: 10),
-            Text('Payment Failed'),
+            const Icon(Icons.error, color: AppColors.error),
+            const SizedBox(width: 10),
+            Text('payment_failed_title'.tr()),
           ],
         ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Try Again'),
+            child: Text('try_again'.tr()),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            child: const Text('Pay at Counter'),
+            child: Text('pay_at_counter'.tr()),
           ),
         ],
       ),
@@ -243,7 +251,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Secure Payment'),
+        title: Text('secure_payment_title'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -261,13 +269,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
               child: Column(
                 children: [
-                  const Text(
-                    'Total Amount to Pay',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  Text(
+                    'total_amount_to_pay'.tr(),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Rs. ${widget.amount.toStringAsFixed(0)}',
+                    'rupee_amount'.tr(args: [widget.amount.toStringAsFixed(0)]),
                     style: const TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -292,7 +300,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 24),
             
             // Payment Method Selection
-            const Text('Select Payment Method', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('select_payment_method'.tr(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -305,7 +313,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   value: selectedPaymentMethod,
                   isExpanded: true,
                   items: paymentMethods.map((method) {
-                    return DropdownMenuItem(value: method, child: Text(method));
+                    return DropdownMenuItem(value: method, child: Text(_kPaymentMethodKeys[method]!.tr()));
                   }).toList(),
                   onChanged: (value) => setState(() => selectedPaymentMethod = value!),
                 ),
@@ -315,14 +323,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
             // Card Details (for Card payments)
             if (selectedPaymentMethod == 'Credit Card' || selectedPaymentMethod == 'Debit Card') ...[
               const SizedBox(height: 20),
-              const Text('Card Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('card_details'.tr(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               TextField(
                 controller: cardHolderController,
-                decoration: const InputDecoration(
-                  labelText: 'Cardholder Name',
-                  hintText: 'John Doe',
-                  prefixIcon: Icon(Icons.person_outline),
+                decoration: InputDecoration(
+                  labelText: 'cardholder_name_label'.tr(),
+                  hintText: 'cardholder_name_hint'.tr(),
+                  prefixIcon: const Icon(Icons.person_outline),
                 ),
               ),
               const SizedBox(height: 12),
@@ -330,8 +338,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 controller: cardNumberController,
                 keyboardType: TextInputType.number,
                 maxLength: 19,
-                decoration: const InputDecoration(
-                  labelText: 'Card Number',
+                decoration: InputDecoration(
+                  labelText: 'card_number_label'.tr(),
                   hintText: '1234 5678 9012 3456',
                   prefixIcon: Icon(Icons.credit_card),
                   counterText: '',
@@ -362,8 +370,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       controller: expiryController,
                       keyboardType: TextInputType.datetime,
                       maxLength: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'Expiry Date',
+                      decoration: InputDecoration(
+                        labelText: 'expiry_date_label'.tr(),
                         hintText: 'MM/YY',
                         counterText: '',
                       ),
@@ -386,8 +394,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       keyboardType: TextInputType.number,
                       maxLength: 4,
                       obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'CVV',
+                      decoration: InputDecoration(
+                        labelText: 'cvv_label'.tr(),
                         hintText: '123',
                         counterText: '',
                       ),
@@ -406,9 +414,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     },
                     activeColor: AppColors.primaryBlue,
                   ),
-                  const Text(
-                    'Save card for future payments',
-                    style: TextStyle(fontSize: 13),
+                  Text(
+                    'save_card_future_payments'.tr(),
+                    style: const TextStyle(fontSize: 13),
                   ),
                 ],
               ),
@@ -425,14 +433,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Mobile Banking',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Text(
+                      'pm_mobile_banking'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'You will be redirected to your mobile banking app.',
-                      style: TextStyle(fontSize: 12),
+                    Text(
+                      'redirect_mobile_banking_note'.tr(),
+                      style: const TextStyle(fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
@@ -464,7 +472,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         }
                       },
                       icon: const Icon(Icons.arrow_forward),
-                      label: const Text('Proceed to Mobile Banking'),
+                      label: Text('proceed_to_mobile_banking'.tr()),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                       ),
@@ -484,20 +492,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Online Banking',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Text(
+                      'pm_online_banking'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Select your bank to continue payment',
-                      style: TextStyle(fontSize: 12),
+                    Text(
+                      'select_bank_note'.tr(),
+                      style: const TextStyle(fontSize: 12),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        labelText: 'Select Bank',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: 'select_bank_label'.tr(),
+                        border: const OutlineInputBorder(),
                       ),
                       items: const [
                         DropdownMenuItem(value: 'Commercial Bank', child: Text('Commercial Bank')),
@@ -536,7 +544,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         }
                       },
                       icon: const Icon(Icons.arrow_forward),
-                      label: const Text('Proceed to Online Banking'),
+                      label: Text('proceed_to_online_banking'.tr()),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                       ),
@@ -561,10 +569,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                 ),
                 child: isProcessing
-                    ? const Row(
+                    ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(
+                          const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
@@ -572,11 +580,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               color: Colors.white,
                             ),
                           ),
-                          SizedBox(width: 12),
-                          Text('Processing...', style: TextStyle(color: Colors.white)),
+                          const SizedBox(width: 12),
+                          Text('processing_label'.tr(), style: const TextStyle(color: Colors.white)),
                         ],
                       )
-                    : const Text('Pay Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    : Text('pay_now_button'.tr(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
             
@@ -595,7 +603,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Your payment is secure. We do not store your card details.',
+                      'secure_payment_note'.tr(),
                       style: TextStyle(fontSize: 11, color: AppColors.primaryBlue),
                     ),
                   ),

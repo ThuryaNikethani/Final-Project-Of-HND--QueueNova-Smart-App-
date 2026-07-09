@@ -1,9 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
+
+const Map<String, String> _kNotifFilterKeys = {
+  'All': 'filter_all',
+  'Unread': 'filter_unread',
+  'Queue': 'queue',
+  'Appointment': 'filter_appointment',
+  'System': 'filter_system',
+};
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -123,8 +131,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
     batch.commit();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('All notifications marked as read'),
+      SnackBar(
+        content: Text('all_notifications_marked_read'.tr()),
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.success,
       ),
@@ -136,12 +144,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Clear All Notifications'),
-        content: const Text('Are you sure you want to clear all notifications? This action cannot be undone.'),
+        title: Text('clear_all_notifications_title'.tr()),
+        content: Text('clear_all_notifications_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -153,15 +161,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               if (!context.mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('All notifications cleared'),
+                SnackBar(
+                  content: Text('all_notifications_cleared'.tr()),
                   behavior: SnackBarBehavior.floating,
                   backgroundColor: AppColors.success,
                 ),
               );
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Clear All'),
+            child: Text('clear_all_button'.tr()),
           ),
         ],
       ),
@@ -173,13 +181,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final difference = now.difference(time);
     
     if (difference.inMinutes < 1) {
-      return 'Just now';
+      return 'time_just_now'.tr();
     } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes} min ago';
+      return 'time_minutes_ago'.tr(args: ['${difference.inMinutes}']);
     } else if (difference.inHours < 24) {
-      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
+      return (difference.inHours > 1 ? 'time_hours_ago' : 'time_hour_ago').tr(args: ['${difference.inHours}']);
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
+      return (difference.inDays > 1 ? 'time_days_ago' : 'time_day_ago').tr(args: ['${difference.inDays}']);
     } else {
       return DateFormat('dd MMM yyyy').format(time);
     }
@@ -193,7 +201,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('Notifications'),
+            Text('notifications'.tr()),
             if (unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(left: 8),
@@ -223,23 +231,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'mark_all_read',
                   child: Row(
                     children: [
-                      Icon(Icons.done_all_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text('Mark all as read'),
+                      const Icon(Icons.done_all_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text('mark_all_as_read_menu'.tr()),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'clear_all',
                   child: Row(
                     children: [
-                      Icon(Icons.delete_outline_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text('Clear all'),
+                      const Icon(Icons.delete_outline_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text('clear_all_menu_item'.tr()),
                     ],
                   ),
                 ),
@@ -260,7 +268,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 final filter = filters[index];
                 final isSelected = selectedFilter == filter;
                 return FilterChip(
-                  label: Text(filter),
+                  label: Text(_kNotifFilterKeys[filter]!.tr()),
                   selected: isSelected,
                   onSelected: (_) => setState(() => selectedFilter = filter),
                   selectedColor: AppColors.primaryBlue,
@@ -283,7 +291,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Failed to load notifications:\n$_error',
+                  'failed_load_notifications'.tr(args: ['$_error']),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.red),
                 ),
@@ -301,7 +309,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'No notifications',
+                    'no_notifications_empty'.tr(),
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w500,
@@ -310,7 +318,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'You\'re all caught up!',
+                    'all_caught_up'.tr(),
                     style: TextStyle(
                       fontSize: 14,
                       color: AppColors.grey.withOpacity(0.7),
@@ -506,7 +514,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: const Text('Close'),
+                  child: Text('close'.tr()),
                 ),
               ),
             ],

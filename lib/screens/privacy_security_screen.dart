@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
@@ -51,13 +52,13 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   String _deletionTileSubtitle() {
     switch (_deletionRequest?['status']) {
       case 'pending':
-        return 'Deletion request pending officer review';
+        return 'deletion_pending_subtitle'.tr();
       case 'approved':
-        return 'Request approved — tap to delete or deactivate';
+        return 'deletion_approved_subtitle'.tr();
       case 'rejected':
-        return 'Previous request rejected — tap for details';
+        return 'deletion_rejected_subtitle'.tr();
       default:
-        return 'Permanently delete your account and all data';
+        return 'deletion_default_subtitle'.tr();
     }
   }
 
@@ -83,20 +84,20 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Account'),
+        title: Text('delete_account'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Your request will be reviewed by an officer before your account can be deleted or deactivated.',
+            Text(
+              'deletion_review_notice'.tr(),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: reasonController,
               maxLines: 2,
               decoration: InputDecoration(
-                labelText: 'Reason (optional)',
+                labelText: 'reason_optional_label'.tr(),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -105,7 +106,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -118,11 +119,11 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               );
               await _loadDeletionRequestStatus();
               final message = success
-                  ? 'Account deletion request submitted'
+                  ? 'deletion_request_submitted'.tr()
                   : switch (authService.lastDeletionRequestError) {
-                      'already_pending' => 'You already have a pending deletion request',
-                      'not_signed_in' => 'You must be signed in to submit this request',
-                      _ => 'Failed to submit request. Please try again.',
+                      'already_pending' => 'deletion_already_pending'.tr(),
+                      'not_signed_in' => 'must_be_signed_in'.tr(),
+                      _ => 'submit_request_failed'.tr(),
                     };
               messenger.showSnackBar(
                 SnackBar(
@@ -132,7 +133,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               );
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Submit Request'),
+            child: Text('submit_request_button'.tr()),
           ),
         ],
       ),
@@ -144,12 +145,12 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Request Pending'),
-        content: const Text('Your account deletion request is awaiting review by an officer.'),
+        title: Text('request_pending_title'.tr()),
+        content: Text('deletion_awaiting_review'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
         ],
       ),
@@ -157,24 +158,24 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   }
 
   void _showRejectedDialog() {
-    final reason = _deletionRequest?['rejectionReason'] as String? ?? 'No reason provided';
+    final reason = _deletionRequest?['rejectionReason'] as String? ?? 'no_reason_provided'.tr();
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Request Rejected'),
-        content: Text('Your previous deletion request was rejected:\n\n$reason'),
+        title: Text('request_rejected_title'.tr()),
+        content: Text('deletion_rejected_reason'.tr(args: [reason])),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
               _showRequestDeletionDialog();
             },
-            child: const Text('Submit New Request'),
+            child: Text('submit_new_request'.tr()),
           ),
         ],
       ),
@@ -186,21 +187,21 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Request Approved'),
-        content: const Text(
-          'An officer has approved your request. Choose how to proceed:',
+        title: Text('request_approved_title'.tr()),
+        content: Text(
+          'deletion_approved_notice'.tr(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
               _confirmFinalAction(permanentDelete: false);
             },
-            child: const Text('Deactivate'),
+            child: Text('deactivate_button'.tr()),
           ),
           TextButton(
             onPressed: () {
@@ -208,7 +209,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               _confirmFinalAction(permanentDelete: true);
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete Permanently'),
+            child: Text('delete_permanently_button'.tr()),
           ),
         ],
       ),
@@ -220,16 +221,16 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(permanentDelete ? 'Delete Account Permanently' : 'Deactivate Account'),
+        title: Text(permanentDelete ? 'delete_account_permanently_title'.tr() : 'deactivate_account_title'.tr()),
         content: Text(
           permanentDelete
-              ? 'This will permanently delete your account and all data. This cannot be undone.'
-              : 'This will deactivate your account and sign you out. Your data is kept but you will not be able to log in.',
+              ? 'delete_permanently_warning'.tr()
+              : 'deactivate_warning'.tr(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -246,7 +247,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               );
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(permanentDelete ? 'Delete' : 'Deactivate'),
+            child: Text(permanentDelete ? 'delete_button'.tr() : 'deactivate_button'.tr()),
           ),
         ],
       ),
@@ -258,14 +259,14 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Change Password'),
+        title: Text('change_password'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               obscureText: true,
               decoration: InputDecoration(
-                labelText: 'Current Password',
+                labelText: 'current_password_label'.tr(),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -273,7 +274,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
             TextField(
               obscureText: true,
               decoration: InputDecoration(
-                labelText: 'New Password',
+                labelText: 'new_password_label'.tr(),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -281,7 +282,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
             TextField(
               obscureText: true,
               decoration: InputDecoration(
-                labelText: 'Confirm New Password',
+                labelText: 'confirm_new_password_label'.tr(),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -290,17 +291,17 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Password changed successfully'), backgroundColor: AppColors.success),
+                SnackBar(content: Text('password_changed_successfully'.tr()), backgroundColor: AppColors.success),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
-            child: const Text('Update'),
+            child: Text('update_button'.tr()),
           ),
         ],
       ),
@@ -311,7 +312,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Privacy & Security'),
+        title: Text('privacy_security'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -319,10 +320,10 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
         child: Column(
           children: [
             // Security Section
-            _buildSectionHeader('Security', Icons.security_rounded),
+            _buildSectionHeader('security_section'.tr(), Icons.security_rounded),
             _buildSwitchTile(
-              'Biometric Login',
-              'Use fingerprint or face recognition to login',
+              'biometric_login'.tr(),
+              'biometric_login_desc'.tr(),
               Icons.fingerprint,
               isBiometricEnabled,
               (value) {
@@ -331,8 +332,8 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               },
             ),
             _buildSwitchTile(
-              'Two-Factor Authentication',
-              'Receive OTP for secure login',
+              'two_factor_auth'.tr(),
+              'two_factor_auth_desc'.tr(),
               Icons.sms_rounded,
               isTwoFactorEnabled,
               (value) {
@@ -341,18 +342,18 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               },
             ),
             _buildActionTile(
-              'Change Password',
-              'Update your account password',
+              'change_password'.tr(),
+              'change_password_desc'.tr(),
               Icons.lock_reset_rounded,
               _changePassword,
             ),
-            
+
             const SizedBox(height: 8),
             // Privacy Section
-            _buildSectionHeader('Privacy', Icons.privacy_tip_rounded),
+            _buildSectionHeader('privacy_section'.tr(), Icons.privacy_tip_rounded),
             _buildSwitchTile(
-              'Push Notifications',
-              'Receive alerts about queue updates and appointments',
+              'push_notifications'.tr(),
+              'push_notifications_desc'.tr(),
               Icons.notifications_rounded,
               isNotificationEnabled,
               (value) {
@@ -361,8 +362,8 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               },
             ),
             _buildSwitchTile(
-              'Location Access',
-              'Allow app to suggest nearby offices',
+              'location_access'.tr(),
+              'location_access_desc'.tr(),
               Icons.location_on_rounded,
               isLocationEnabled,
               (value) {
@@ -371,23 +372,23 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               },
             ),
             _buildActionTile(
-              'Data Download',
-              'Request a copy of your personal data',
+              'data_download'.tr(),
+              'data_download_desc'.tr(),
               Icons.download_rounded,
               () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Data download request submitted'), backgroundColor: AppColors.success),
+                  SnackBar(content: Text('data_download_submitted'.tr()), backgroundColor: AppColors.success),
                 );
               },
             ),
             _buildActionTile(
-              'Delete Account',
+              'delete_account'.tr(),
               _deletionTileSubtitle(),
               Icons.delete_forever_rounded,
               _openDeleteAccountFlow,
               isDanger: true,
             ),
-            
+
             const SizedBox(height: 24),
             // App Info
             Container(
@@ -399,10 +400,10 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               ),
               child: Column(
                 children: [
-                  _buildInfoRow('App Version', '1.0.0'),
-                  _buildInfoRow('Last Updated', 'May 2026'),
-                  _buildInfoRow('Privacy Policy', 'View Policy', isLink: true),
-                  _buildInfoRow('Terms of Service', 'View Terms', isLink: true),
+                  _buildInfoRow('app_version_label'.tr(), '1.0.0'),
+                  _buildInfoRow('last_updated_label'.tr(), 'May 2026'),
+                  _buildInfoRow('privacy_policy_label'.tr(), 'view_policy_label'.tr(), isLink: true),
+                  _buildInfoRow('terms_of_service_label'.tr(), 'view_terms_label'.tr(), isLink: true),
                 ],
               ),
             ),

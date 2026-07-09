@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/login_screen.dart';
 import 'package:queuenova_mobile/screens/home_screen.dart';
@@ -150,9 +151,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       position: _slideAnimation,
                       child: Column(
                         children: [
-                          const Text(
-                            'QueueNova',
-                            style: TextStyle(
+                          Text(
+                            'app_name'.tr(),
+                            style: const TextStyle(
                               fontSize: 38,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
@@ -162,9 +163,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                            child: const Text(
-                              'Master Your Queues, Simplify Services',
-                              style: TextStyle(
+                            child: Text(
+                              'app_tagline'.tr(),
+                              style: const TextStyle(
                                 fontSize: 14,
                                 color: Colors.white,
                                 letterSpacing: 0.8,
