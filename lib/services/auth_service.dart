@@ -513,6 +513,14 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> updateProfilePhoto(String? photoData) async {
+    // Write to Firestore first so a failure here throws and is surfaced to
+    // the caller, instead of silently leaving only a local copy that
+    // disappears once the local cache is cleared on logout.
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      await _db.collection('users').doc(uid).update({'photoURL': photoData});
+    }
+
     _userPhotoUrl = photoData;
 
     final prefs = await SharedPreferences.getInstance();
@@ -520,15 +528,6 @@ class AuthService extends ChangeNotifier {
       await prefs.setString('userPhotoUrl', photoData);
     } else {
       await prefs.remove('userPhotoUrl');
-    }
-
-    final uid = _auth.currentUser?.uid;
-    if (uid != null) {
-      try {
-        await _db.collection('users').doc(uid).update({'photoURL': photoData});
-      } catch (e) {
-        debugPrint('Firestore updateProfilePhoto failed: $e');
-      }
     }
 
     notifyListeners();
