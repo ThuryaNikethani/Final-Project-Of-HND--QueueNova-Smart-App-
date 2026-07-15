@@ -23,22 +23,21 @@ class WebApiService {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
-  /// Returns `{id, name, email, role}` or null on bad credentials / error.
+  /// Returns `{id, name, email, role}` on success, or null when the server
+  /// was reached but rejected the credentials. Network/timeout failures are
+  /// thrown rather than swallowed, so the caller can tell "server said no"
+  /// (must not fall back to any offline demo credentials) apart from
+  /// "server unreachable" (fallback is appropriate).
   static Future<Map<String, dynamic>?> login(String email, String password) async {
-    try {
-      final res = await http
-          .post(
-            Uri.parse('$_base/auth/login'),
-            headers: _headers,
-            body: jsonEncode({'email': email, 'password': password}),
-          )
-          .timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
-      return null;
-    } catch (e) {
-      debugPrint('WebApiService.login error: $e');
-      return null;
-    }
+    final res = await http
+        .post(
+          Uri.parse('$_base/auth/login'),
+          headers: _headers,
+          body: jsonEncode({'email': email, 'password': password}),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    return null;
   }
 
   // ── Dashboard ───────────────────────────────────────────────────────────────
@@ -249,6 +248,7 @@ class WebApiService {
     required String name,
     required String email,
     required String role,
+    String? phone,
     String updatedBy = 'Admin',
   }) async {
     try {
@@ -256,12 +256,28 @@ class WebApiService {
           .put(
             Uri.parse('$_base/users/$id'),
             headers: _headers,
-            body: jsonEncode({'name': name, 'email': email, 'role': role, 'updatedBy': updatedBy}),
+            body: jsonEncode({'name': name, 'email': email, 'role': role, 'phone': phone, 'updatedBy': updatedBy}),
           )
           .timeout(const Duration(seconds: 5));
       return res.statusCode == 200;
     } catch (e) {
       debugPrint('WebApiService.updateUser error: $e');
+    }
+    return false;
+  }
+
+  static Future<bool> updatePhoto(int id, String? photoBase64, {String updatedBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/users/$id/photo'),
+            headers: _headers,
+            body: jsonEncode({'photoBase64': photoBase64, 'updatedBy': updatedBy}),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.updatePhoto error: $e');
     }
     return false;
   }
@@ -330,6 +346,370 @@ class WebApiService {
     return false;
   }
 
+  /// Cross-department sharing — sets the full list of departments a
+  /// document is shared with.
+  static Future<bool> shareDocument(int id, List<String> departments, {String sharedBy = 'Officer'}) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base/documents/$id/share'),
+            headers: _headers,
+            body: jsonEncode({'departments': departments, 'sharedBy': sharedBy}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.shareDocument error: $e');
+    }
+    return false;
+  }
+
+  // ── Service Requests (Service Processing screen) ────────────────────────────
+
+  /// Appointments with their attached documents grouped into one application.
+  static Future<List<Map<String, dynamic>>> getServiceRequests() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/service-requests'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getServiceRequests error: $e');
+    }
+    return [];
+  }
+
+  /// Approves every document attached to appointment [appointmentId].
+  static Future<bool> approveServiceRequest(int appointmentId, String reviewedBy) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base/service-requests/$appointmentId/approve'),
+            headers: _headers,
+            body: jsonEncode({'reviewedBy': reviewedBy}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.approveServiceRequest error: $e');
+    }
+    return false;
+  }
+
+  /// Rejects every document attached to appointment [appointmentId] with [reason].
+  static Future<bool> rejectServiceRequest(int appointmentId, String reviewedBy, {String reason = ''}) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base/service-requests/$appointmentId/reject'),
+            headers: _headers,
+            body: jsonEncode({'reviewedBy': reviewedBy, 'reason': reason}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.rejectServiceRequest error: $e');
+    }
+    return false;
+  }
+
+  /// Shares every document attached to appointment [appointmentId] with [departments]
+  /// (additive — keeps whatever they were already shared with).
+  static Future<bool> shareServiceRequest(int appointmentId, List<String> departments, {String sharedBy = 'Officer'}) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base/service-requests/$appointmentId/share'),
+            headers: _headers,
+            body: jsonEncode({'departments': departments, 'sharedBy': sharedBy}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.shareServiceRequest error: $e');
+    }
+    return false;
+  }
+
+  /// Approves or rejects a citizen's self-requested priority-queue upgrade
+  /// (flips `is_priority` on their still-waiting queue entry, or leaves it
+  /// alone on reject). [token] is the citizen's queue token, e.g. "A-025".
+  static Future<bool> setQueuePriority(String token, bool approve, {String officerName = 'Officer'}) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base/queue/$token/priority'),
+            headers: _headers,
+            body: jsonEncode({'approve': approve, 'officerName': officerName}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.setQueuePriority error: $e');
+    }
+    return false;
+  }
+
+  // ── Reports ──────────────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getReports() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/reports'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getReports error: $e');
+    }
+    return [];
+  }
+
+  /// Generates a PDF report on the server from real appointment/queue data
+  /// and returns its metadata (including `id`, used to build the download
+  /// URL), or null on failure.
+  static Future<Map<String, dynamic>?> generateReport({
+    required String reportType,
+    required DateTime date,
+    String generatedBy = 'Admin',
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/reports/generate'),
+            headers: _headers,
+            body: jsonEncode({
+              'reportType': reportType,
+              'date': date.toIso8601String().substring(0, 10),
+              'generatedBy': generatedBy,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['report'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('WebApiService.generateReport error: $e');
+    }
+    return null;
+  }
+
+  /// Direct-download URL for a generated report PDF (opens/saves via the
+  /// browser, same pattern as document downloads).
+  static String reportDownloadUrl(int id) => '$_base/reports/download/$id';
+
+  // ── Backup & Restore ─────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getBackups() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/backup'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getBackups error: $e');
+    }
+    return [];
+  }
+
+  /// Dumps every table in the database to a new backup file. Can take a
+  /// few seconds on a large database.
+  static Future<Map<String, dynamic>?> createBackup({String createdBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/backup/create'),
+            headers: _headers,
+            body: jsonEncode({'createdBy': createdBy}),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['backup'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('WebApiService.createBackup error: $e');
+    }
+    return null;
+  }
+
+  static String backupDownloadUrl(int id) => '$_base/backup/download/$id';
+
+  static Future<bool> deleteBackup(int id, {String deletedBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .delete(
+            Uri.parse('$_base/backup/$id'),
+            headers: _headers,
+            body: jsonEncode({'deletedBy': deletedBy}),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.deleteBackup error: $e');
+    }
+    return false;
+  }
+
+  /// Destructive: truncates and reloads every table the backup captured.
+  /// The server always takes a fresh safety backup of the current state
+  /// first, so this can itself be undone by restoring that safety backup.
+  static Future<Map<String, dynamic>?> restoreBackup(int id, {String restoredBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/backup/$id/restore'),
+            headers: _headers,
+            body: jsonEncode({'restoredBy': restoredBy}),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+      debugPrint('WebApiService.restoreBackup failed: ${res.body}');
+    } catch (e) {
+      debugPrint('WebApiService.restoreBackup error: $e');
+    }
+    return null;
+  }
+
+  // ── System Settings ──────────────────────────────────────────────────────────
+
+  /// Returns the singleton settings blob, e.g. `{id, settings: {...}, updated_at}`.
+  static Future<Map<String, dynamic>?> getSystemSettings() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/system-settings'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('WebApiService.getSystemSettings error: $e');
+    }
+    return null;
+  }
+
+  static Future<bool> saveSystemSettings(Map<String, dynamic> settings, {String updatedBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/system-settings'),
+            headers: _headers,
+            body: jsonEncode({'settings': settings, 'updatedBy': updatedBy}),
+          )
+          .timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.saveSystemSettings error: $e');
+    }
+    return false;
+  }
+
+  // ── Security Settings ────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>?> getSecuritySettings() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/security-settings'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('WebApiService.getSecuritySettings error: $e');
+    }
+    return null;
+  }
+
+  static Future<bool> saveSecuritySettings(Map<String, dynamic> settings, {String updatedBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/security-settings'),
+            headers: _headers,
+            body: jsonEncode({'settings': settings, 'updatedBy': updatedBy}),
+          )
+          .timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.saveSecuritySettings error: $e');
+    }
+    return false;
+  }
+
+  // ── Departments ───────────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getDepartments() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/departments'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getDepartments error: $e');
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> addDepartment({
+    required String name,
+    required String code,
+    required String type,
+    String createdBy = 'Admin',
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/departments'),
+            headers: _headers,
+            body: jsonEncode({'name': name, 'code': code, 'type': type, 'createdBy': createdBy}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['department'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('WebApiService.addDepartment error: $e');
+    }
+    return null;
+  }
+
+  static Future<bool> setDepartmentActive(int id, bool active) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/departments/$id/status'),
+            headers: _headers,
+            body: jsonEncode({'active': active}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.setDepartmentActive error: $e');
+    }
+    return false;
+  }
+
+  static Future<bool> deleteDepartment(int id, {String deletedBy = 'Admin'}) async {
+    try {
+      final res = await http
+          .delete(
+            Uri.parse('$_base/departments/$id'),
+            headers: _headers,
+            body: jsonEncode({'deletedBy': deletedBy}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.deleteDepartment error: $e');
+    }
+    return false;
+  }
+
   // ── Appointments ─────────────────────────────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getAppointments() async {
@@ -346,13 +726,13 @@ class WebApiService {
     return [];
   }
 
-  static Future<bool> updateAppointmentStatus(String id, {String? status, String? paymentStatus}) async {
+  static Future<bool> updateAppointmentStatus(String id, {String? status, String? paymentStatus, String updatedBy = 'Officer'}) async {
     try {
       final res = await http
           .put(
             Uri.parse('$_base/appointments/$id/status'),
             headers: _headers,
-            body: jsonEncode({'status': status, 'payment_status': paymentStatus}),
+            body: jsonEncode({'status': status, 'payment_status': paymentStatus, 'updatedBy': updatedBy}),
           )
           .timeout(const Duration(seconds: 5));
       return res.statusCode == 200;
@@ -406,6 +786,41 @@ class WebApiService {
       debugPrint('WebApiService.getQueueStats error: $e');
     }
     return null;
+  }
+
+  /// Stats specifically for the Reception dashboard's own stat cards
+  /// (active queue, arrivals today, walk-ins today) for one office.
+  static Future<Map<String, dynamic>?> getReceptionStats(String officeId) async {
+    try {
+      final encoded = Uri.encodeComponent(officeId);
+      final res = await http
+          .get(Uri.parse('$_base/reception/stats/$encoded'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('WebApiService.getReceptionStats error: $e');
+    }
+    return null;
+  }
+
+  /// Marks one specific queue token as being served now (used by
+  /// Reception's Walk-in "Call Next", which must call a specific walk-in
+  /// rather than whatever [callNext] would auto-pick for the whole office).
+  static Future<bool> serveToken(String token, String officerName) async {
+    try {
+      final encoded = Uri.encodeComponent(token);
+      final res = await http
+          .post(
+            Uri.parse('$_base/queue/$encoded/serve'),
+            headers: _headers,
+            body: jsonEncode({'officerName': officerName}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.serveToken error: $e');
+    }
+    return false;
   }
 
   /// Add a walk-in queue entry. Returns the new entry with token number.
@@ -570,9 +985,10 @@ class WebApiService {
 
   /// Per-staff service performance (tokens served, avg handling time).
   static Future<List<Map<String, dynamic>>> getStaffPerformance(
-      {String? officeId}) async {
+      {String? officeId, int days = 7}) async {
     try {
-      final q = officeId != null ? '?officeId=${Uri.encodeComponent(officeId)}' : '';
+      var q = '?days=$days';
+      if (officeId != null) q += '&officeId=${Uri.encodeComponent(officeId)}';
       final res = await http
           .get(Uri.parse('$_base/analytics/staff-performance$q'), headers: _headers)
           .timeout(const Duration(seconds: 8));
@@ -583,6 +999,20 @@ class WebApiService {
       debugPrint('WebApiService.getStaffPerformance error: $e');
     }
     return [];
+  }
+
+  /// Real payment/transaction data from paid appointments: raw transaction
+  /// list plus breakdowns by payment method and by service.
+  static Future<Map<String, dynamic>> getPaymentReports({int days = 30}) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/payment-reports?days=$days'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('WebApiService.getPaymentReports error: $e');
+    }
+    return {'transactions': [], 'byMethod': [], 'byService': []};
   }
 
   // ── Appointments (extended) ──────────────────────────────────────────────────
@@ -606,21 +1036,23 @@ class WebApiService {
   // ── Users (extended) ─────────────────────────────────────────────────────────
 
   /// Change a staff member's password (verified against [oldPassword]).
-  static Future<bool> changePassword(
+  static Future<SendResult> changePassword(
       int id, String oldPassword, String newPassword) async {
     try {
       final res = await http
           .put(
             Uri.parse('$_base/users/$id/password'),
             headers: _headers,
-            body: jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
+            body: jsonEncode({'currentPassword': oldPassword, 'newPassword': newPassword}),
           )
           .timeout(const Duration(seconds: 5));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return const SendResult(true);
+      final error = _extractError(res.body) ?? 'HTTP ${res.statusCode}';
+      return SendResult(false, error);
     } catch (e) {
       debugPrint('WebApiService.changePassword error: $e');
+      return SendResult(false, e.toString());
     }
-    return false;
   }
 
   /// Activate or deactivate a staff account. [status] is `'active'` or `'inactive'`.
@@ -636,6 +1068,36 @@ class WebApiService {
       return res.statusCode == 200;
     } catch (e) {
       debugPrint('WebApiService.updateUserStatus error: $e');
+    }
+    return false;
+  }
+
+  /// Per-officer dashboard/app preferences (web_settings_screen.dart).
+  /// Returns `{}` if nothing's been saved yet.
+  static Future<Map<String, dynamic>> getUserPreferences(int id) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/users/$id/preferences'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('WebApiService.getUserPreferences error: $e');
+    }
+    return {};
+  }
+
+  static Future<bool> updateUserPreferences(int id, Map<String, dynamic> settings) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/users/$id/preferences'),
+            headers: _headers,
+            body: jsonEncode({'settings': settings}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.updateUserPreferences error: $e');
     }
     return false;
   }
@@ -688,7 +1150,20 @@ class WebApiService {
 
   /// Send an SMS via Twilio (server-side, delivered regardless of whether the
   /// citizen's app is open). [phone] must be in E.164 format (e.g. `+94771234567`).
+  /// Reads the `smsNotifications`/`pushNotifications` toggles saved from the
+  /// System Settings screen. Missing settings (nothing saved yet) default to
+  /// enabled, matching the screen's own default toggle state.
+  static Future<bool> _isNotificationChannelEnabled(String key) async {
+    final res = await getSystemSettings();
+    final settings = res?['settings'] as Map<String, dynamic>?;
+    if (settings == null) return true;
+    return settings[key] as bool? ?? true;
+  }
+
   static Future<SendResult> sendSms(String phone, String message) async {
+    if (!await _isNotificationChannelEnabled('smsNotifications')) {
+      return const SendResult(false, 'SMS notifications are disabled in System Settings');
+    }
     try {
       final res = await http
           .post(
@@ -724,6 +1199,9 @@ class WebApiService {
   /// closed on mobile; open in another tab or closed on web).
   static Future<SendResult> sendPush(List<String> tokens, String title, String body) async {
     if (tokens.isEmpty) return const SendResult(false, 'no device tokens');
+    if (!await _isNotificationChannelEnabled('pushNotifications')) {
+      return const SendResult(false, 'Push notifications are disabled in System Settings');
+    }
     try {
       final res = await http
           .post(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'web_api_service.dart';
 
 class WebAccountDeletionRequests extends StatefulWidget {
@@ -126,28 +127,38 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'all': return 'web_status_all'.tr();
+      case 'pending': return 'pending'.tr();
+      case 'approved': return 'web_status_approved'.tr();
+      case 'rejected': return 'web_status_rejected'.tr();
+      default: return status;
+    }
+  }
+
   Future<void> _approveRequest(Map<String, dynamic> req) async {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Approve Deletion Request'),
+        title: Text('web_approve_deletion_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Citizen: ${req['name'] ?? 'Unknown'}'),
+            Text('web_citizen_label'.tr(args: ['${req['name'] ?? 'web_unknown'.tr()}'])),
             const SizedBox(height: 8),
-            Text('NIC: ${req['nic'] ?? '—'}'),
+            Text('web_nic_colon_label'.tr(args: ['${req['nic'] ?? '—'}'])),
             if ((req['reason'] as String?)?.isNotEmpty == true) ...[
               const SizedBox(height: 8),
-              Text('Reason: ${req['reason']}'),
+              Text('web_reason_label'.tr(args: ['${req['reason']}'])),
             ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -168,14 +179,14 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
               );
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Request approved'),
+                SnackBar(
+                  content: Text('web_request_approved'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Approve'),
+            child: Text('web_approve_button'.tr()),
           ),
         ],
       ),
@@ -187,21 +198,21 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Reject Deletion Request'),
+        title: Text('web_reject_deletion_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Citizen: ${req['name'] ?? 'Unknown'}'),
+            Text('web_citizen_label'.tr(args: ['${req['name'] ?? 'web_unknown'.tr()}'])),
             const SizedBox(height: 12),
-            const Text('Please provide a reason for rejection:'),
+            Text('web_reject_reason_prompt'.tr()),
             const SizedBox(height: 8),
             TextField(
               controller: reasonController,
               maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Reason for rejection...',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: 'web_reason_for_rejection_hint'.tr(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -209,14 +220,14 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () async {
               if (reasonController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please provide a reason for rejection'),
+                  SnackBar(
+                    content: Text('web_provide_rejection_reason_snackbar'.tr()),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -240,14 +251,14 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
               );
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Request rejected'),
+                SnackBar(
+                  content: Text('web_request_rejected'.tr()),
                   backgroundColor: Colors.red,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Reject'),
+            child: Text('web_reject_button'.tr()),
           ),
         ],
       ),
@@ -263,7 +274,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Account Deletion Requests'),
+        title: Text('web_menu_account_deletion_requests'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -274,7 +285,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Failed to load requests:\n$_error',
+                  'web_failed_load_requests'.tr(args: ['$_error']),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.red),
                 ),
@@ -286,20 +297,20 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                 children: [
                   Row(
                     children: [
-                      _buildStatCard('Total', _requests.length.toString(), Colors.blue),
+                      _buildStatCard('web_stat_total'.tr(), _requests.length.toString(), Colors.blue),
                       const SizedBox(width: 12),
                       _buildStatCard(
-                          'Pending',
+                          'pending'.tr(),
                           _requests.where((r) => r['status'] == 'pending').length.toString(),
                           Colors.orange),
                       const SizedBox(width: 12),
                       _buildStatCard(
-                          'Approved',
+                          'web_status_approved'.tr(),
                           _requests.where((r) => r['status'] == 'approved').length.toString(),
                           Colors.green),
                       const SizedBox(width: 12),
                       _buildStatCard(
-                          'Rejected',
+                          'web_status_rejected'.tr(),
                           _requests.where((r) => r['status'] == 'rejected').length.toString(),
                           Colors.red),
                     ],
@@ -316,7 +327,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                         final filter = filters[index];
                         final isSelected = selectedFilter == filter;
                         return FilterChip(
-                          label: Text(filter),
+                          label: Text(_statusLabel(filter)),
                           selected: isSelected,
                           onSelected: (_) => setState(() => selectedFilter = filter),
                           selectedColor: const Color(0xFF1A56DB),
@@ -333,7 +344,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                         boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10)],
                       ),
                       child: filtered.isEmpty
-                          ? const Center(child: Text('No requests found'))
+                          ? Center(child: Text('web_no_requests_found'.tr()))
                           : SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: SingleChildScrollView(
@@ -341,14 +352,14 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                                 child: DataTable(
                                   columnSpacing: 16,
                                   dataRowHeight: 60,
-                                  columns: const [
-                                    DataColumn(label: Text('Citizen Name', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('NIC', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('Requested', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('Reason', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('Reviewed By', style: TextStyle(fontWeight: FontWeight.w600))),
-                                    DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.w600))),
+                                  columns: [
+                                    DataColumn(label: Text('web_citizen_name'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_col_nic'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_requested_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_reason_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_col_status'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_reviewed_by_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                    DataColumn(label: Text('web_col_actions'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                                   ],
                                   rows: filtered.map((req) {
                                     final status = req['status'] as String? ?? 'pending';
@@ -356,7 +367,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                                         ? Colors.green
                                         : (status == 'pending' ? Colors.orange : Colors.red);
                                     return DataRow(cells: [
-                                      DataCell(Text(req['name'] as String? ?? 'Unknown')),
+                                      DataCell(Text(req['name'] as String? ?? 'web_unknown'.tr())),
                                       DataCell(Text(req['nic'] as String? ?? '—')),
                                       DataCell(Text(_formatTimestamp(req['requestedAt'] as Timestamp?))),
                                       DataCell(SizedBox(
@@ -373,7 +384,7 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                                             color: statusColor.withValues(alpha: 0.1),
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: Text(status[0].toUpperCase() + status.substring(1),
+                                          child: Text(_statusLabel(status),
                                               style: TextStyle(color: statusColor, fontWeight: FontWeight.w600)),
                                         ),
                                       ),
@@ -386,14 +397,14 @@ class _WebAccountDeletionRequestsState extends State<WebAccountDeletionRequests>
                                                   IconButton(
                                                     icon: const Icon(Icons.check_circle, size: 18, color: Colors.green),
                                                     onPressed: () => _approveRequest(req),
-                                                    tooltip: 'Approve',
+                                                    tooltip: 'web_approve_tooltip'.tr(),
                                                     padding: EdgeInsets.zero,
                                                     constraints: const BoxConstraints(),
                                                   ),
                                                   IconButton(
                                                     icon: const Icon(Icons.cancel, size: 18, color: Colors.red),
                                                     onPressed: () => _rejectRequest(req),
-                                                    tooltip: 'Reject',
+                                                    tooltip: 'web_reject_tooltip'.tr(),
                                                     padding: EdgeInsets.zero,
                                                     constraints: const BoxConstraints(),
                                                   ),

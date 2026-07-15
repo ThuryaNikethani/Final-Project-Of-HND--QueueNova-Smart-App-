@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
@@ -86,9 +86,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   // Document upload variables
-  Map<String, File> _selectedFiles = {};
+  Map<String, PlatformFile> _selectedFiles = {};
   Map<String, String> _selectedFileNames = {};
   Map<String, bool> _isFileUploading = {};
+  // `_requiredDocs` is a getter that rebuilds a fresh list of
+  // DocumentRequirement objects every time it's read, so a checkbox's
+  // `.selected` flag set directly on one of those objects is discarded on
+  // the next read (e.g. the very next build). Track selection here instead,
+  // keyed by doc id, so it actually persists across rebuilds.
+  Map<String, bool> _docSelected = {};
 
   // Dynamic document requirements based on service
   List<DocumentRequirement> get _requiredDocs {
@@ -509,55 +515,84 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     });
   }
 
-  String _generateQRData() {
-    final appointmentId = 'APT${DateTime.now().millisecondsSinceEpoch}';
-    final tokenNumber =
-        '${selectedService.substring(0, 1)}-${DateTime.now().millisecond % 1000}';
-
-    final qrData = {
+  // Embeds the appointment details directly in the QR code (self-contained
+  // JSON) instead of a URL to the backend's /qr/:id page. A URL requires the
+  // scanning device to actually reach the backend's LAN address, which only
+  // works if it's on the same Wi-Fi as the dev machine — fails over mobile
+  // data or any other network. Encoding the data directly works regardless
+  // of network, same as before this was changed to a URL.
+  String _generateQRData({
+    required String appointmentId,
+    required String service,
+    required String office,
+    required DateTime date,
+    required String time,
+    required String token,
+    required double fee,
+    required String paymentMethod,
+  }) {
+    return jsonEncode({
       'appointmentId': appointmentId,
-      'service': selectedService,
-      'office': selectedOffice,
-      'date': DateFormat('yyyy-MM-dd').format(selectedDate),
-      'time': selectedTime.format(context),
-      'token': tokenNumber,
-      'fee': _selectedFee,
-      'paymentMethod': selectedPaymentMethod,
+      'service': service,
+      'office': office,
+      'date': DateFormat('yyyy-MM-dd').format(date),
+      'time': time,
+      'token': token,
+      'fee': fee,
+      'paymentMethod': paymentMethod,
       'timestamp': DateTime.now().toIso8601String(),
-    };
-    return jsonEncode(qrData);
+    });
   }
 
   // ==================== DOCUMENT UPLOAD METHODS ====================
 
   Future<void> _pickFile(String docId) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
-      allowMultiple: false,
-    );
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+        allowMultiple: false,
+        withData: true,
+      );
 
-    if (result != null && result.files.isNotEmpty) {
-      final file = File(result.files.first.path!);
-      final fileName = result.files.first.name;
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.first;
+      final fileName = picked.name;
+      // `withData: true` above means `bytes` is populated on every platform.
+      // On web, `picked.path` isn't just null — file_picker actually throws
+      // if you touch it at all, so `kIsWeb` must short-circuit before it's
+      // ever evaluated. Keep the whole PlatformFile rather than converting
+      // to a dart:io File, since dart:io isn't usable on web either.
+      final hasPath = !kIsWeb && picked.path != null;
+      if (picked.bytes == null && !hasPath) {
+        throw Exception('No file data returned by picker');
+      }
 
       setState(() {
-        _selectedFiles[docId] = file;
+        _selectedFiles[docId] = picked;
         _selectedFileNames[docId] = fileName;
         _isFileUploading[docId] = false;
         // Auto-select the checkbox when file is uploaded
-        final index = _requiredDocs.indexWhere((d) => d.id == docId);
-        if (index != -1) {
-          _requiredDocs[index].selected = true;
-        }
+        _docSelected[docId] = true;
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('file_uploaded_successfully'.tr(args: [fileName])),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('file_upload_failed'.tr(args: ['$e'])),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -567,10 +602,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     setState(() {
       _selectedFiles.remove(docId);
       _selectedFileNames.remove(docId);
-      final index = _requiredDocs.indexWhere((d) => d.id == docId);
-      if (index != -1) {
-        _requiredDocs[index].selected = false;
-      }
+      _docSelected[docId] = false;
     });
   }
 
@@ -746,54 +778,70 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Future<void> _bookAppointment() async {
     setState(() => _isBooking = true);
 
-    // Simulate upload delay
-    await Future.delayed(const Duration(seconds: 1));
+    // This whole body used to run with no try/catch: if anything threw —
+    // Firestore, Postgres, a bad doc lookup, anything — the `setState(() =>
+    // _isBooking = false)` below it never ran, so the button stayed
+    // disabled with its spinner showing forever with no visible error. That
+    // looked exactly like a hang even when the actual failure was instant.
+    try {
+      // Simulate upload delay
+      await Future.delayed(const Duration(seconds: 1));
 
-    final appointmentId = 'APT${DateTime.now().millisecondsSinceEpoch}';
-    final tokenNumber =
-        '${selectedService.substring(0, 1)}-${DateTime.now().millisecond % 1000}';
-    final qrData = _generateQRData();
+      final appointmentId = 'APT${DateTime.now().millisecondsSinceEpoch}';
+      final tokenNumber =
+          '${selectedService.substring(0, 1)}-${DateTime.now().millisecond % 1000}';
+      final qrData = _generateQRData(
+        appointmentId: appointmentId,
+        service: selectedService,
+        office: selectedOffice,
+        date: selectedDate,
+        time: selectedTime.format(context),
+        token: tokenNumber,
+        fee: _selectedFee,
+        paymentMethod: selectedPaymentMethod,
+      );
 
-    // Create document attachments from selected files
-    List<DocumentAttachment> attachments = [];
-    for (var entry in _selectedFiles.entries) {
-      final docId = entry.key;
-      final file = entry.value;
-      final fileName = _selectedFileNames[docId] ?? 'document.pdf';
-      final doc = _requiredDocs.firstWhere((d) => d.id == docId);
-      
-      attachments.add(DocumentAttachment(
-        id: docId,
-        fileName: fileName,
-        filePath: file.path,
-        documentType: doc.name,
-        isRequired: doc.required,
-        uploadedAt: DateTime.now(),
-      ));
-    }
+      // Create document attachments from selected files
+      List<DocumentAttachment> attachments = [];
+      for (var entry in _selectedFiles.entries) {
+        final docId = entry.key;
+        final file = entry.value;
+        final fileName = _selectedFileNames[docId] ?? 'document.pdf';
+        final doc = _requiredDocs.firstWhere((d) => d.id == docId);
 
-    final newAppointment = AppointmentModel(
-      id: appointmentId,
-      service: selectedService,
-      office: selectedOffice,
-      date: selectedDate,
-      time: selectedTime.format(context),
-      token: tokenNumber,
-      status: 'Confirmed',
-      qrData: qrData,
-      paymentStatus: selectedPaymentMethod == 'Pay Online' ? 'paid' : 'pending',
-      feeAmount: _selectedFee,
-      paymentMethod: selectedPaymentMethod,
-      notes: _notesController.text,
-      documents: attachments,
-    );
+        attachments.add(DocumentAttachment(
+          id: docId,
+          fileName: fileName,
+          // file_picker throws if `.path` is touched at all on web — must
+          // not evaluate it there, not even as the left side of `??`.
+          filePath: (!kIsWeb && file.path != null) ? file.path! : fileName,
+          documentType: doc.name,
+          isRequired: doc.required,
+          uploadedAt: DateTime.now(),
+          bytes: file.bytes,
+        ));
+      }
 
-    // Save appointment with documents
-    await AppointmentService.addAppointment(newAppointment);
+      final newAppointment = AppointmentModel(
+        id: appointmentId,
+        service: selectedService,
+        office: selectedOffice,
+        date: selectedDate,
+        time: selectedTime.format(context),
+        token: tokenNumber,
+        status: 'Confirmed',
+        qrData: qrData,
+        paymentStatus: selectedPaymentMethod == 'Pay Online' ? 'paid' : 'pending',
+        feeAmount: _selectedFee,
+        paymentMethod: selectedPaymentMethod,
+        notes: _notesController.text,
+        documents: attachments,
+      );
 
-    setState(() => _isBooking = false);
+      // Save appointment with documents
+      await AppointmentService.addAppointment(newAppointment);
 
-    if (mounted) {
+      if (!mounted) return;
       if (selectedPaymentMethod == 'Pay Online') {
         Navigator.pushReplacement(
           context,
@@ -809,6 +857,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       } else {
         _showConfirmationDialog(tokenNumber);
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('booking_failed'.tr(args: ['$e'])),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBooking = false);
     }
   }
 
@@ -1355,11 +1414,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         children: [
           // Checkbox
           Checkbox(
-            value: doc.selected,
+            value: _docSelected[doc.id] ?? doc.selected,
             onChanged: (value) {
               setState(() {
-                doc.selected = value ?? false;
-                if (!doc.selected && _selectedFiles.containsKey(doc.id)) {
+                _docSelected[doc.id] = value ?? false;
+                if (!(value ?? false) && _selectedFiles.containsKey(doc.id)) {
                   _selectedFiles.remove(doc.id);
                   _selectedFileNames.remove(doc.id);
                 }

@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../web_role_model.dart';
 import '../web_session.dart';
+import '../web_login.dart';
 
 class WebSidebar extends StatelessWidget {
   final int selectedIndex;
@@ -10,6 +13,7 @@ class WebSidebar extends StatelessWidget {
   final String userName;
   final String userEmail;
   final List<Map<String, dynamic>> menuItems;
+  final String? photoBase64;
 
   const WebSidebar({
     super.key,
@@ -19,6 +23,7 @@ class WebSidebar extends StatelessWidget {
     required this.userName,
     required this.userEmail,
     required this.menuItems,
+    this.photoBase64,
   });
 
   @override
@@ -124,11 +129,13 @@ class WebSidebar extends StatelessWidget {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1A56DB), Color(0xFF7C3AED)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      gradient: (photoBase64 == null || photoBase64!.isEmpty)
+                          ? const LinearGradient(
+                              colors: [Color(0xFF1A56DB), Color(0xFF7C3AED)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            )
+                          : null,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
@@ -138,17 +145,26 @@ class WebSidebar extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Center(
-                      child: Text(
-                        userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ),
+                    child: (photoBase64 != null && photoBase64!.isNotEmpty)
+                        ? ClipOval(
+                            child: Image.memory(
+                              base64Decode(photoBase64!),
+                              width: 64,
+                              height: 64,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -261,7 +277,7 @@ class WebSidebar extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    item['label'],
+                                    (item['label'] as String).tr(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -323,7 +339,10 @@ class WebSidebar extends StatelessWidget {
                     onTap: () async {
                       await WebSession.clear();
                       if (!context.mounted) return;
-                      Navigator.pushReplacementNamed(context, '/login');
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const WebLogin()),
+                      );
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
@@ -346,10 +365,10 @@ class WebSidebar extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'Logout',
-                              style: TextStyle(
+                              'logout'.tr(),
+                              style: const TextStyle(
                                 color: Colors.red,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_api_service.dart';
 
@@ -11,94 +12,36 @@ class WebQueueManagement extends StatefulWidget {
 }
 
 class _WebQueueManagementState extends State<WebQueueManagement> {
-  int currentServing = 24;
-  int totalInQueue = 12;
-  int avgWaitTime = 25;
-  String crowdLevel = 'Medium';
+  int currentServing = 0;
+  int totalInQueue = 0;
+  int avgWaitTime = 0;
+  String crowdLevel = 'Low';
   String selectedOffice = 'Divisional Secretariat - Colombo';
 
   final List<String> offices = [
     'Divisional Secretariat - Colombo',
+    'Divisional Secretariat - Kandy',
+    'Divisional Secretariat - Galle',
+    'Divisional Secretariat - Kurunegala',
     'RMV - Werahera',
+    'RMV - Kiribathgoda',
+    'RMV - Kandy',
     'Passport Office - Battaramulla',
+    'Passport Office - Kandy',
+    'Department of Registration - Colombo',
+    'NIC Service Center - Colombo',
+    'NIC Service Center - Kandy',
+    'Immigration Department - Battaramulla',
+    'Land Registry Office - Colombo',
+    'Land Registry Office - Kandy',
+    'Municipal Council - Colombo',
+    'Municipal Council - Kandy',
+    'Registrar General Department - Colombo',
   ];
 
-  List<Map<String, dynamic>> queueList = [
-    {
-      'token': 'A-025',
-      'citizen': 'K.N.T. Nikethani',
-      'service': 'Passport Renewal',
-      'status': 'waiting',
-      'waitTime': '25 min',
-      'isPriority': false,
-      'counter': 1,
-      'paymentStatus': 'paid',
-      'fee': 5000,
-    },
-    {
-      'token': 'A-026',
-      'citizen': 'Saman Perera',
-      'service': 'NIC Card',
-      'status': 'waiting',
-      'waitTime': '30 min',
-      'isPriority': false,
-      'counter': 1,
-      'paymentStatus': 'paid',
-      'fee': 500,
-    },
-    {
-      'token': 'A-027',
-      'citizen': 'Mala Kumari',
-      'service': 'Driving License',
-      'status': 'waiting',
-      'waitTime': '35 min',
-      'isPriority': true,
-      'counter': 2,
-      'paymentStatus': 'pending',
-      'fee': 3000,
-    },
-    {
-      'token': 'A-028',
-      'citizen': 'Ruwan Jaya',
-      'service': 'Birth Certificate',
-      'status': 'waiting',
-      'waitTime': '40 min',
-      'isPriority': false,
-      'counter': 1,
-      'paymentStatus': 'paid',
-      'fee': 200,
-    },
-    {
-      'token': 'A-029',
-      'citizen': 'Deepani Fernando',
-      'service': 'NIC Card',
-      'status': 'waiting',
-      'waitTime': '45 min',
-      'isPriority': false,
-      'counter': 1,
-      'paymentStatus': 'pending',
-      'fee': 500,
-    },
-  ];
+  List<Map<String, dynamic>> queueList = [];
 
-  List<Map<String, dynamic>> emergencyQueue = [
-    {
-      'token': 'E-001',
-      'citizen': 'Senior Citizen',
-      'service': 'Medical Emergency',
-      'status': 'priority',
-      'waitTime': '5 min',
-      'paymentStatus': 'paid',
-    },
-    {
-      'token': 'E-002',
-      'citizen': 'Pregnant Woman',
-      'service': 'Document Urgent',
-      'status': 'priority',
-      'waitTime': '10 min',
-      'paymentStatus': 'pending',
-    },
-  ];
+  List<Map<String, dynamic>> emergencyQueue = [];
 
   @override
   void initState() {
@@ -109,7 +52,19 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
   Future<void> _loadQueueFromApi() async {
     final rows = await WebApiService.getQueue(selectedOffice);
     final emergency = await WebApiService.getEmergencyQueue(selectedOffice);
+    final stats = await WebApiService.getQueueStats(selectedOffice);
     if (!mounted) return;
+    if (stats != null) {
+      setState(() {
+        final servingToken = stats['currentServingToken'] as String?;
+        if (servingToken != null) {
+          currentServing = int.tryParse(servingToken.split('-').last) ?? currentServing;
+        }
+        final avgWait = stats['avgWaitMinutes'];
+        if (avgWait is num) avgWaitTime = avgWait.round();
+        crowdLevel = stats['crowdLevel'] as String? ?? crowdLevel;
+      });
+    }
     if (rows.isNotEmpty) {
       setState(() {
         queueList = rows.map((r) => {
@@ -122,7 +77,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
           'isPriority': r['is_priority'] == true || r['is_priority'] == 1,
           'counter': r['counter'] ?? 1,
           'paymentStatus': r['payment_status'] ?? 'pending',
-          'fee': (r['fee'] ?? 0).toDouble(),
+          'fee': double.tryParse(r['fee']?.toString() ?? '') ?? 0.0,
           'id': r['id'],
         }).toList();
         totalInQueue = queueList.length;
@@ -182,9 +137,9 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Payment Required'),
-          content: Text('Payment of Rs. ${nextToken['fee']} is pending for ${nextToken['citizen']}. Please collect payment first.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          title: Text('web_payment_required'.tr()),
+          content: Text('web_payment_pending_message'.tr(args: ['${nextToken['fee']}', '${nextToken['citizen']}'])),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('ok'.tr()))],
         ),
       );
       return;
@@ -198,7 +153,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Token ${nextToken['token']} called. Please proceed to Counter ${nextToken['counter']}.'),
+        content: Text('web_token_called_message'.tr(args: ['${nextToken['token']}', '${nextToken['counter']}'])),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
       ),
@@ -221,7 +176,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
       totalInQueue--;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Service completed. Token removed from queue.'), backgroundColor: Colors.blue),
+      SnackBar(content: Text('web_service_completed_message'.tr()), backgroundColor: Colors.blue),
     );
 
     // Persist to backend
@@ -229,9 +184,14 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
   }
 
   void _sendNotification(Map<String, dynamic> token) {
+    _notifyCitizenByNic(
+      nic: token['citizen_nic'] as String?,
+      title: 'Queue Update',
+      message: 'Your token ${token['token']} is coming up soon at Counter ${token['counter']}. Please be ready.',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Notification sent to ${token['citizen']} for token ${token['token']}'),
+        content: Text('web_notification_sent_message'.tr(args: ['${token['citizen']}', '${token['token']}'])),
         backgroundColor: Colors.orange,
       ),
     );
@@ -241,27 +201,24 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reassign Counter'),
+        title: Text('web_reassign_counter'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Token: ${token['token']}'),
+            Text('web_token_label'.tr(args: ['${token['token']}'])),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
               initialValue: token['counter'] as int? ?? 1,
-              decoration: const InputDecoration(labelText: 'Select Counter'),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('Counter 1')),
-                DropdownMenuItem(value: 2, child: Text('Counter 2')),
-                DropdownMenuItem(value: 3, child: Text('Counter 3')),
-                DropdownMenuItem(value: 4, child: Text('Counter 4')),
-              ],
+              decoration: InputDecoration(labelText: 'web_select_counter'.tr()),
+              items: [1, 2, 3, 4]
+                  .map((n) => DropdownMenuItem(value: n, child: Text('web_counter_n'.tr(args: ['$n']))))
+                  .toList(),
               onChanged: (value) {
                 final newCounter = value ?? 1;
                 setState(() => token['counter'] = newCounter);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Token ${token['token']} reassigned to Counter $newCounter'), backgroundColor: Colors.green),
+                  SnackBar(content: Text('web_token_reassigned_message'.tr(args: ['${token['token']}', '$newCounter'])), backgroundColor: Colors.green),
                 );
                 // Persist to backend
                 WebApiService.reassignCounter(token['token'].toString(), newCounter, 'Queue Officer');
@@ -281,9 +238,9 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Payment Required'),
-          content: const Text('Payment is pending for this emergency request. Please collect payment first.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          title: Text('web_payment_required'.tr()),
+          content: Text('web_emergency_payment_pending'.tr()),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('ok'.tr()))],
         ),
       );
       return;
@@ -292,19 +249,19 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Emergency Priority'),
+        title: Text('web_emergency_priority_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Token: ${emergencyToken['token']}'),
-            Text('Citizen: ${emergencyToken['citizen']}'),
-            Text('Reason: ${emergencyToken['service']}'),
+            Text('web_token_label'.tr(args: ['${emergencyToken['token']}'])),
+            Text('web_citizen_label'.tr(args: ['${emergencyToken['citizen']}'])),
+            Text('web_reason_label'.tr(args: ['${emergencyToken['service']}'])),
             const SizedBox(height: 16),
-            const Text('This is a priority request. Process immediately?'),
+            Text('web_priority_process_confirm'.tr()),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Later')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('web_later'.tr())),
           ElevatedButton(
             onPressed: () {
               final tokenStr = emergencyToken['token'].toString();
@@ -314,7 +271,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
               });
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Emergency token called immediately!'), backgroundColor: Colors.red),
+                SnackBar(content: Text('web_emergency_called_message'.tr()), backgroundColor: Colors.red),
               );
               // Persist to backend
               WebApiService.processEmergency(tokenStr, 'Queue Officer');
@@ -326,7 +283,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Process Now'),
+            child: Text('web_process_now'.tr()),
           ),
         ],
       ),
@@ -338,7 +295,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Queue Management'),
+        title: Text('web_menu_queue_management'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -350,8 +307,8 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
             children: [
               // Header
               ModernPageHeader(
-                title: 'Queue Management',
-                subtitle: 'Monitor and manage service queues in real-time',
+                title: 'web_menu_queue_management'.tr(),
+                subtitle: 'web_queue_mgmt_subtitle'.tr(),
                 icon: Icons.queue,
                 actions: [
                   Container(
@@ -361,12 +318,12 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.circle, color: Color(0xFF10B981), size: 8),
-                        SizedBox(width: 6),
-                        Text('System Active', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981))),
+                        const Icon(Icons.circle, color: Color(0xFF10B981), size: 8),
+                        const SizedBox(width: 6),
+                        Text('web_system_active'.tr(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981))),
                       ],
                     ),
                   ),
@@ -379,13 +336,13 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                 height: 100,
                 child: Row(
                   children: [
-                    _buildStatCard('Currently Serving', 'A-$currentServing', Icons.person_outline, const Color(0xFF10B981)),
+                    _buildStatCard('web_stat_currently_serving'.tr(), 'A-$currentServing', Icons.person_outline, const Color(0xFF10B981)),
                     const SizedBox(width: 12),
-                    _buildStatCard('Total in Queue', '$totalInQueue', Icons.queue, const Color(0xFF1A56DB)),
+                    _buildStatCard('web_stat_total_in_queue'.tr(), '$totalInQueue', Icons.queue, const Color(0xFF1A56DB)),
                     const SizedBox(width: 12),
-                    _buildStatCard('Avg. Wait Time', '$avgWaitTime min', Icons.timer_outlined, const Color(0xFFF59E0B)),
+                    _buildStatCard('web_stat_avg_wait_time'.tr(), '$avgWaitTime min', Icons.timer_outlined, const Color(0xFFF59E0B)),
                     const SizedBox(width: 12),
-                    _buildStatCard('Crowd Level', crowdLevel, Icons.people_outline, _getCrowdColor()),
+                    _buildStatCard('web_stat_crowd_level'.tr(), _crowdLevelLabel(), Icons.people_outline, _getCrowdColor()),
                   ],
                 ),
               ),
@@ -410,7 +367,10 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                           items: offices.map((office) {
                             return DropdownMenuItem(value: office, child: Text(office));
                           }).toList(),
-                          onChanged: (value) => setState(() => selectedOffice = value!),
+                          onChanged: (value) {
+                            setState(() => selectedOffice = value!);
+                            _loadQueueFromApi();
+                          },
                         ),
                       ),
                     ),
@@ -421,7 +381,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                     child: ElevatedButton.icon(
                       onPressed: _callNextToken,
                       icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                      label: const Text('Call Next'),
+                      label: Text('web_call_next'.tr()),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
@@ -437,7 +397,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                       child: ElevatedButton.icon(
                         onPressed: _processEmergencyQueue,
                         icon: const Icon(Icons.warning_rounded, size: 18),
-                        label: Text('Emergency (${emergencyQueue.length})'),
+                        label: Text('web_emergency_count'.tr(args: ['${emergencyQueue.length}'])),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFDC2626),
                           foregroundColor: Colors.white,
@@ -464,7 +424,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                       const Icon(Icons.warning_rounded, color: Color(0xFFDC2626)),
                       const SizedBox(width: 10),
                       Text(
-                        '${emergencyQueue.length} urgent request(s) requiring immediate attention',
+                        'web_urgent_requests_alert'.tr(args: ['${emergencyQueue.length}']),
                         style: const TextStyle(
                           color: Color(0xFFDC2626),
                           fontWeight: FontWeight.w500,
@@ -481,9 +441,9 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    const Text(
-                      'Current Queue',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)),
+                    Text(
+                      'web_current_queue'.tr(),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)),
                     ),
                     const SizedBox(width: 8),
                     Container(
@@ -492,7 +452,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                         color: const Color(0xFF1A56DB).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('${queueList.length} waiting', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1A56DB))),
+                      child: Text('web_count_waiting'.tr(args: ['${queueList.length}']), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1A56DB))),
                     ),
                   ],
                 ),
@@ -514,15 +474,15 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                         columnSpacing: 14,
                         dataRowHeight: 48,
                         headingRowHeight: 40,
-                        columns: const [
-                          DataColumn(label: Text('Token', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Citizen', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Service', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Wait Time', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Payment', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Priority', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Counter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                          DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                        columns: [
+                          DataColumn(label: Text('web_col_token'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_citizen'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_service'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_wait_time'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_payment'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_priority'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_counter'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                          DataColumn(label: Text('web_col_actions'.tr(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
                         ],
                         rows: queueList.map((item) {
                           final paymentColor = getPaymentColor(item['paymentStatus']);
@@ -566,7 +526,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                                       ),
                                       const SizedBox(width: 3),
                                       Text(
-                                        item['paymentStatus'] == 'paid' ? 'Paid' : 'Pending',
+                                        item['paymentStatus'] == 'paid' ? 'web_paid'.tr() : 'pending'.tr(),
                                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: paymentColor),
                                       ),
                                     ],
@@ -581,7 +541,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    item['isPriority'] ? 'Yes' : 'No',
+                                    item['isPriority'] ? 'web_yes'.tr() : 'no_button'.tr(),
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 10,
@@ -605,7 +565,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Tooltip(
-                                      message: 'Send Notification',
+                                      message: 'web_tooltip_send_notification'.tr(),
                                       child: IconButton(
                                         icon: const Icon(Icons.notifications_outlined),
                                         onPressed: () => _sendNotification(item),
@@ -619,7 +579,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                                       ),
                                     ),
                                     Tooltip(
-                                      message: 'Reassign Counter',
+                                      message: 'web_reassign_counter'.tr(),
                                       child: IconButton(
                                         icon: const Icon(Icons.swap_horiz_rounded),
                                         onPressed: () => _reassignCounter(item),
@@ -633,7 +593,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                                       ),
                                     ),
                                     Tooltip(
-                                      message: 'Complete Service',
+                                      message: 'web_tooltip_complete_service'.tr(),
                                       child: IconButton(
                                         icon: const Icon(Icons.check_circle_outline),
                                         onPressed: () => _completeService(item),
@@ -709,6 +669,19 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
         ),
       ),
     );
+  }
+
+  String _crowdLevelLabel() {
+    switch (crowdLevel) {
+      case 'Low':
+        return 'web_crowd_low'.tr();
+      case 'Medium':
+        return 'web_crowd_medium'.tr();
+      case 'High':
+        return 'web_crowd_high'.tr();
+      default:
+        return crowdLevel;
+    }
   }
 
   Color _getCrowdColor() {

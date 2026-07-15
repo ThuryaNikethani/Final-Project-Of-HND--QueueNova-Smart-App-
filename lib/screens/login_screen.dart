@@ -3,6 +3,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/register_screen.dart';
 import 'package:queuenova_mobile/screens/home_screen.dart';
+import 'package:queuenova_mobile/screens/otp_verification_screen.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
 import 'package:provider/provider.dart';
 
@@ -32,13 +33,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     setState(() => _isLoading = false);
+    if (!mounted) return;
 
-    if (success && mounted) {
+    if (success && authService.twoFactorPending) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpVerificationScreen(phone: authService.twoFactorPendingPhone ?? ''),
+        ),
+      );
+    } else if (success) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
-    } else if (mounted) {
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('invalid_nic_password'.tr()),

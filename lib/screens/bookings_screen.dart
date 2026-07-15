@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart' hide DateFormat;
 import 'package:intl/intl.dart';
@@ -20,136 +20,78 @@ class _BookingsScreenState extends State<BookingsScreen> {
   final List<String> filters = ['Upcoming', 'Past', 'Cancelled'];
   List<AppointmentModel> appointments = [];
   bool isLoading = true;
+  String? _error;
+  StreamSubscription<List<AppointmentModel>>? _appointmentsSub;
 
   @override
   void initState() {
     super.initState();
-    _addSampleBookings();
-    _loadAppointments();
+    _watchAppointments();
   }
 
-  Future<void> _addSampleBookings() async {
-    final existing = await AppointmentService.getAppointments();
-    if (existing.isEmpty) {
-      final fmt = DateFormat('yyyy-MM-dd');
-      final now = DateTime.now();
+  @override
+  void dispose() {
+    _appointmentsSub?.cancel();
+    super.dispose();
+  }
 
-      String buildQr(String id, String service, String office, DateTime date,
-              String time, String token, double fee, String method) =>
-          jsonEncode({
-            'appointmentId': id,
-            'service': service,
-            'office': office,
-            'date': fmt.format(date),
-            'time': time,
-            'token': token,
-            'fee': fee,
-            'paymentMethod': method,
-            'timestamp': now.toIso8601String(),
-          });
-
-      final sample1 = AppointmentModel(
-        id: 'APT001',
-        service: 'Passport Renewal',
-        office: 'Divisional Secretariat - Colombo',
-        date: now.add(const Duration(days: 2)),
-        time: '10:30 AM',
-        token: 'A-024',
-        status: 'Confirmed',
-        qrData: buildQr('APT001', 'Passport Renewal', 'Divisional Secretariat - Colombo',
-            now.add(const Duration(days: 2)), '10:30 AM', 'A-024', 5000, 'Pay at Counter'),
-        paymentStatus: 'pending',
-        feeAmount: 5000,
-        paymentMethod: 'Pay at Counter',
-        notes: 'Bring old passport',
-      );
-      final sample2 = AppointmentModel(
-        id: 'APT002',
-        service: 'National ID Card',
-        office: 'Department of Registration',
-        date: now.add(const Duration(days: 5)),
-        time: '02:00 PM',
-        token: 'B-015',
-        status: 'Pending',
-        qrData: buildQr('APT002', 'National ID Card', 'Department of Registration',
-            now.add(const Duration(days: 5)), '02:00 PM', 'B-015', 500, 'Pay at Counter'),
-        paymentStatus: 'pending',
-        feeAmount: 500,
-        paymentMethod: 'Pay at Counter',
-        notes: '',
-      );
-      final sample3 = AppointmentModel(
-        id: 'APT003',
-        service: 'Driving License',
-        office: 'RMV - Werahera',
-        date: now.subtract(const Duration(days: 3)),
-        time: '09:00 AM',
-        token: 'C-089',
-        status: 'Completed',
-        qrData: buildQr('APT003', 'Driving License', 'RMV - Werahera',
-            now.subtract(const Duration(days: 3)), '09:00 AM', 'C-089', 3000, 'Pay Online'),
-        paymentStatus: 'paid',
-        feeAmount: 3000,
-        paymentMethod: 'Pay Online',
-        notes: 'Medical certificate submitted',
-      );
-      final sample4 = AppointmentModel(
-        id: 'APT004',
-        service: 'Birth Certificate',
-        office: 'Divisional Secretariat - Kandy',
-        date: now.add(const Duration(days: 7)),
-        time: '11:00 AM',
-        token: 'D-032',
-        status: 'Confirmed',
-        qrData: buildQr('APT004', 'Birth Certificate', 'Divisional Secretariat - Kandy',
-            now.add(const Duration(days: 7)), '11:00 AM', 'D-032', 200, 'Pay Online'),
-        paymentStatus: 'paid',
-        feeAmount: 200,
-        paymentMethod: 'Pay Online',
-        notes: '',
-      );
-      final sample5 = AppointmentModel(
-        id: 'APT005',
-        service: 'Police Clearance',
-        office: 'Police Headquarters',
-        date: now.subtract(const Duration(days: 10)),
-        time: '01:30 PM',
-        token: 'E-056',
-        status: 'Completed',
-        qrData: buildQr('APT005', 'Police Clearance', 'Police Headquarters',
-            now.subtract(const Duration(days: 10)), '01:30 PM', 'E-056', 1000, 'Pay Online'),
-        paymentStatus: 'paid',
-        feeAmount: 1000,
-        paymentMethod: 'Pay Online',
-        notes: 'Clearance certificate collected',
-      );
-      await AppointmentService.addAppointment(sample1);
-      await AppointmentService.addAppointment(sample2);
-      await AppointmentService.addAppointment(sample3);
-      await AppointmentService.addAppointment(sample4);
-      await AppointmentService.addAppointment(sample5);
-    }
+  // Realtime: re-renders the moment this citizen's appointments change in
+  // Firestore (new booking, staff status update, cancellation, reschedule)
+  // instead of only on screen load / manual refresh.
+  void _watchAppointments() {
+    _appointmentsSub = AppointmentService.watchAppointments().listen((apts) {
+      if (!mounted) return;
+      setState(() {
+        appointments = apts.reversed.toList();
+        isLoading = false;
+        _error = null;
+      });
+    }, onError: (Object e) {
+      debugPrint('watchAppointments error: $e');
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+        _error = e.toString();
+      });
+    });
   }
 
   Future<void> _loadAppointments() async {
     setState(() => isLoading = true);
-    final apts = await AppointmentService.getAppointments();
-    setState(() {
-      appointments = apts.reversed.toList();
-      isLoading = false;
-    });
+    try {
+      final apts = await AppointmentService.getAppointments();
+      if (!mounted) return;
+      setState(() {
+        appointments = apts.reversed.toList();
+        isLoading = false;
+        _error = null;
+      });
+    } catch (e) {
+      debugPrint('_loadAppointments error: $e');
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+        _error = e.toString();
+      });
+    }
   }
 
   List<AppointmentModel> get filteredBookings {
+    // Compare by calendar day, not exact clock time — AppointmentModel.date
+    // is always midnight of the appointment day (the actual time lives in
+    // the separate `time` field), so comparing against DateTime.now()
+    // directly would mark today's not-yet-happened appointment as "Past"
+    // the moment midnight ticks over.
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     if (selectedFilter == 'Upcoming') {
-      return appointments.where((b) => 
-        b.date.isAfter(now) && 
+      return appointments.where((b) =>
+        !b.date.isBefore(today) &&
         (b.status == 'Confirmed' || b.status == 'Pending')
       ).toList();
     } else if (selectedFilter == 'Past') {
-      return appointments.where((b) => 
-        b.date.isBefore(now) || b.status == 'Completed'
+      return appointments.where((b) =>
+        b.date.isBefore(today) || b.status == 'Completed'
       ).toList();
     } else {
       return appointments.where((b) => b.status == 'Cancelled').toList();
@@ -290,6 +232,24 @@ class _BookingsScreenState extends State<BookingsScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: AppColors.error),
+                    const SizedBox(height: 12),
+                    Text(
+                      'failed_load_bookings'.tr(args: ['$_error']),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ],
+                ),
+              ),
+            )
           : Column(
               children: [
                 Container(
@@ -331,7 +291,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
                           itemCount: bookings.length,
                           itemBuilder: (context, index) {
                             final booking = bookings[index];
-                            final isUpcoming = booking.date.isAfter(DateTime.now());
+                            final today = DateTime.now();
+                            final isUpcoming = !booking.date.isBefore(DateTime(today.year, today.month, today.day));
                             final isPending = booking.status == 'Pending';
                             
                             return Container(

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Used to unlock the app when Biometric Login is enabled in Privacy &amp; Security.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to suggest nearby offices when Location Access is enabled in Privacy &amp; Security.</string>
 </dict>
 </plist>

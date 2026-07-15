@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'web_api_service.dart';
 
 class WebBackupRestore extends StatefulWidget {
   const WebBackupRestore({super.key});
@@ -10,32 +13,81 @@ class WebBackupRestore extends StatefulWidget {
 class _WebBackupRestoreState extends State<WebBackupRestore> {
   bool isBackingUp = false;
   bool isRestoring = false;
-  String lastBackupTime = '2026-05-21 10:30:45';
-  String lastBackupSize = '2.4 MB';
-  int backupCount = 12;
-  String backupStatus = 'Success';
+  bool _loading = true;
   String _selectedBackupFilter = 'All';
 
-  List<Map<String, dynamic>> backups = [
-    {'name': 'full_backup_20260521_103045.zip', 'date': '2026-05-21 10:30:45', 'size': '2.4 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'full_backup_20260520_120000.zip', 'date': '2026-05-20 12:00:00', 'size': '2.3 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'incremental_backup_20260519_180000.zip', 'date': '2026-05-19 18:00:00', 'size': '0.5 MB', 'type': 'Incremental', 'status': 'Success'},
-    {'name': 'full_backup_20260518_090000.zip', 'date': '2026-05-18 09:00:00', 'size': '2.2 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'full_backup_20260517_140000.zip', 'date': '2026-05-17 14:00:00', 'size': '2.1 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'incremental_backup_20260516_220000.zip', 'date': '2026-05-16 22:00:00', 'size': '0.4 MB', 'type': 'Incremental', 'status': 'Success'},
-    {'name': 'full_backup_20260515_080000.zip', 'date': '2026-05-15 08:00:00', 'size': '2.0 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'full_backup_20260514_160000.zip', 'date': '2026-05-14 16:00:00', 'size': '2.0 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'incremental_backup_20260513_120000.zip', 'date': '2026-05-13 12:00:00', 'size': '0.3 MB', 'type': 'Incremental', 'status': 'Success'},
-    {'name': 'full_backup_20260512_090000.zip', 'date': '2026-05-12 09:00:00', 'size': '1.9 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'full_backup_20260511_110000.zip', 'date': '2026-05-11 11:00:00', 'size': '1.9 MB', 'type': 'Full', 'status': 'Success'},
-    {'name': 'full_backup_20260510_070000.zip', 'date': '2026-05-10 07:00:00', 'size': '1.8 MB', 'type': 'Full', 'status': 'Success'},
-  ];
+  List<Map<String, dynamic>> backups = [];
+
+  String get lastBackupTime => backups.isNotEmpty ? backups.first['date'] as String : '—';
+  String get lastBackupSize => backups.isNotEmpty ? backups.first['size'] as String : '—';
+  int get backupCount => backups.length;
+  String get backupStatus => backups.isNotEmpty ? backups.first['status'] as String : 'Success';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackups();
+  }
+
+  double _sizeMb(Map<String, dynamic> backup) =>
+      double.tryParse((backup['size'] as String).replaceAll(' MB', '')) ?? 0;
+
+  /// Postgres returns BIGINT columns as JSON strings (to avoid precision
+  /// loss), not numbers, so this must handle both.
+  num? _asNum(dynamic v) => v == null ? null : num.tryParse(v.toString());
+
+  Future<void> _loadBackups() async {
+    final rows = await WebApiService.getBackups();
+    if (!mounted) return;
+    setState(() {
+      backups = rows.map((r) {
+        final sizeBytes = _asNum(r['size_bytes'])?.toInt() ?? 0;
+        return {
+          'id': r['id'],
+          'name': r['file_name']?.toString() ?? '',
+          'date': _formatDate(r['created_at']?.toString()),
+          'size': '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+          'type': r['backup_type']?.toString() ?? 'Full',
+          'status': r['status']?.toString() ?? 'Success',
+        };
+      }).toList();
+      _loading = false;
+    });
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}';
+    } catch (_) {
+      return iso;
+    }
+  }
 
   List<Map<String, dynamic>> get filteredBackups {
     if (_selectedBackupFilter == 'All') return backups;
     if (_selectedBackupFilter == 'Full') return backups.where((b) => b['type'] == 'Full').toList();
     if (_selectedBackupFilter == 'Incremental') return backups.where((b) => b['type'] == 'Incremental').toList();
     return backups;
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case 'Full': return 'web_type_full'.tr();
+      case 'Incremental': return 'web_type_incremental'.tr();
+      case 'All': return 'web_status_all'.tr();
+      default: return type;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'Success': return 'web_status_success'.tr();
+      case 'In Progress': return 'web_backup_in_progress'.tr();
+      default: return status;
+    }
   }
 
   void _showBackupDetails(Map<String, dynamic> backup) {
@@ -47,28 +99,28 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
           children: [
             const Icon(Icons.backup, color: Color(0xFF1A56DB)),
             const SizedBox(width: 10),
-            const Text('Backup Details'),
+            Text('web_backup_details_title'.tr()),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow('Backup Name', backup['name']),
+            _buildDetailRow('web_backup_name_label'.tr(), backup['name']),
             const Divider(),
-            _buildDetailRow('Date & Time', backup['date']),
+            _buildDetailRow('web_col_datetime'.tr(), backup['date']),
             const Divider(),
-            _buildDetailRow('File Size', backup['size']),
+            _buildDetailRow('web_file_size_label'.tr(), backup['size']),
             const Divider(),
-            _buildDetailRow('Backup Type', backup['type']),
+            _buildDetailRow('web_backup_type_label'.tr(), _typeLabel(backup['type'] as String)),
             const Divider(),
-            _buildDetailRow('Status', backup['status']),
+            _buildDetailRow('web_col_status'.tr(), _statusLabel(backup['status'] as String)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -76,7 +128,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
               _downloadBackup(backup);
             },
             icon: const Icon(Icons.download),
-            label: const Text('Download'),
+            label: Text('web_download'.tr()),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
           ),
         ],
@@ -113,7 +165,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
       _showBackupDetails(lastBackup);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No backup found'), backgroundColor: Colors.red),
+        SnackBar(content: Text('web_no_backup_found'.tr()), backgroundColor: Colors.red),
       );
     }
   }
@@ -134,30 +186,30 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
           children: [
             const Icon(Icons.archive, color: Color(0xFF1A56DB)),
             const SizedBox(width: 10),
-            const Text('Backup Summary'),
+            Text('web_backup_summary_title'.tr()),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSummaryRow('Total Backups', '$backupCount'),
+            _buildSummaryRow('web_total_backups'.tr(), '$backupCount'),
             const Divider(),
-            _buildSummaryRow('Full Backups', '$fullBackups'),
+            _buildSummaryRow('web_full_backups'.tr(), '$fullBackups'),
             const Divider(),
-            _buildSummaryRow('Incremental Backups', '$incrementalBackups'),
+            _buildSummaryRow('web_incremental_backups'.tr(), '$incrementalBackups'),
             const Divider(),
-            _buildSummaryRow('Total Storage Used', '${totalSize.toStringAsFixed(1)} MB'),
+            _buildSummaryRow('web_total_storage_used'.tr(), '${totalSize.toStringAsFixed(1)} MB'),
             const Divider(),
-            _buildSummaryRow('Oldest Backup', backups.last['date']),
+            _buildSummaryRow('web_oldest_backup'.tr(), backups.isEmpty ? '—' : backups.last['date']),
             const Divider(),
-            _buildSummaryRow('Latest Backup', backups.first['date']),
+            _buildSummaryRow('web_latest_backup'.tr(), backups.isEmpty ? '—' : backups.first['date']),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -167,7 +219,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
               });
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
-            child: const Text('View All'),
+            child: Text('web_view_all_button'.tr()),
           ),
         ],
       ),
@@ -199,28 +251,28 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
           children: [
             const Icon(Icons.check_circle, color: Colors.green),
             const SizedBox(width: 10),
-            const Text('Backup Status'),
+            Text('web_backup_status_title'.tr()),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStatusRow('Current Status', backupStatus, backupStatus == 'Success' ? Colors.green : Colors.red),
+            _buildStatusRow('web_current_status'.tr(), _statusLabel(backupStatus), backupStatus == 'Success' ? Colors.green : Colors.red),
             const Divider(),
-            _buildStatusRow('Successful Backups', '$successfulBackups', Colors.green),
+            _buildStatusRow('web_successful_backups'.tr(), '$successfulBackups', Colors.green),
             const Divider(),
-            _buildStatusRow('Failed Backups', '$failedBackups', failedBackups > 0 ? Colors.red : Colors.grey),
+            _buildStatusRow('web_failed_backups'.tr(), '$failedBackups', failedBackups > 0 ? Colors.red : Colors.grey),
             const Divider(),
-            _buildStatusRow('Last Backup Time', lastBackupTime, Colors.blue),
+            _buildStatusRow('web_last_backup_time'.tr(), lastBackupTime, Colors.blue),
             const Divider(),
-            _buildStatusRow('Last Backup Size', lastBackupSize, Colors.blue),
+            _buildStatusRow('web_last_backup_size'.tr(), lastBackupSize, Colors.blue),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
         ],
       ),
@@ -248,12 +300,12 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
   }
 
   void _showBackupSizeDetails() {
-    final totalSize = backups.fold<double>(0, (sum, b) {
-      double size = double.tryParse(b['size'].replaceAll(' MB', '')) ?? 0;
-      return sum + size;
-    });
-    final avgSize = totalSize / backups.length;
-    
+    final sizes = backups.map(_sizeMb).toList();
+    final totalSize = sizes.fold<double>(0, (sum, s) => sum + s);
+    final avgSize = sizes.isEmpty ? 0.0 : totalSize / sizes.length;
+    final largest = sizes.isEmpty ? 0.0 : sizes.reduce((a, b) => a > b ? a : b);
+    final smallest = sizes.isEmpty ? 0.0 : sizes.reduce((a, b) => a < b ? a : b);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -262,28 +314,26 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
           children: [
             const Icon(Icons.storage, color: Colors.green),
             const SizedBox(width: 10),
-            const Text('Storage Details'),
+            Text('web_storage_details_title'.tr()),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSizeRow('Total Storage Used', '${totalSize.toStringAsFixed(1)} MB', Colors.purple),
+            _buildSizeRow('web_total_storage_used'.tr(), '${totalSize.toStringAsFixed(1)} MB', Colors.purple),
             const Divider(),
-            _buildSizeRow('Average Backup Size', '${avgSize.toStringAsFixed(1)} MB', Colors.blue),
+            _buildSizeRow('web_average_backup_size'.tr(), '${avgSize.toStringAsFixed(1)} MB', Colors.blue),
             const Divider(),
-            _buildSizeRow('Largest Backup', '2.5 MB', Colors.orange),
+            _buildSizeRow('web_largest_backup'.tr(), '${largest.toStringAsFixed(1)} MB', Colors.orange),
             const Divider(),
-            _buildSizeRow('Smallest Backup', '0.3 MB', Colors.green),
-            const Divider(),
-            _buildSizeRow('Available Space', '28.5 GB', Colors.teal),
+            _buildSizeRow('web_smallest_backup'.tr(), '${smallest.toStringAsFixed(1)} MB', Colors.green),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
         ],
       ),
@@ -304,37 +354,32 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
   }
 
   void _performBackup() async {
-    setState(() {
-      isBackingUp = true;
-      backupStatus = 'In Progress';
-    });
-    
-    await Future.delayed(const Duration(seconds: 2));
-    
-    setState(() {
-      isBackingUp = false;
-      backupCount++;
-      backupStatus = 'Success';
-      lastBackupTime = DateTime.now().toString().substring(0, 19).replaceAll('T', ' ');
-      lastBackupSize = '2.5 MB';
-      
-      backups.insert(0, {
-        'name': 'full_backup_${DateTime.now().toString().substring(0, 19).replaceAll(':', '').replaceAll('-', '').replaceAll('T', '_')}.zip',
-        'date': lastBackupTime,
-        'size': '2.5 MB',
-        'type': 'Full',
-        'status': 'Success',
-      });
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Backup completed successfully'), backgroundColor: Colors.green),
-    );
+    setState(() => isBackingUp = true);
+
+    final backup = await WebApiService.createBackup();
+
+    if (!mounted) return;
+    setState(() => isBackingUp = false);
+    if (backup != null) {
+      await _loadBackups();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('web_backup_completed_success'.tr()), backgroundColor: Colors.green),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('web_backup_failed'.tr()), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _downloadBackup(Map<String, dynamic> backup) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Downloading ${backup['name']}...'), backgroundColor: Colors.blue),
+      SnackBar(content: Text('web_downloading_backup'.tr(args: ['${backup['name']}'])), backgroundColor: Colors.blue),
+    );
+    launchUrl(
+      Uri.parse(WebApiService.backupDownloadUrl(backup['id'] as int)),
+      webOnlyWindowName: '_blank',
     );
   }
 
@@ -343,25 +388,34 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Restore from Backup'),
-        content: Text('Are you sure you want to restore from ${backup['name']}? This will overwrite all current data.'),
+        title: Text('web_restore_from_backup_title'.tr()),
+        content: Text('web_restore_confirm_named'.tr(args: ['${backup['name']}'])),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
               setState(() => isRestoring = true);
-              await Future.delayed(const Duration(seconds: 2));
+              final result = await WebApiService.restoreBackup(backup['id'] as int);
+              if (!mounted) return;
               setState(() => isRestoring = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Restore completed. System restarted.'), backgroundColor: Colors.green),
-              );
+              if (result != null) {
+                await _loadBackups();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('web_restore_completed_restarted'.tr()), backgroundColor: Colors.green),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('web_restore_failed'.tr()), backgroundColor: Colors.red),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Restore'),
+            child: Text('web_restore_button'.tr()),
           ),
         ],
       ),
@@ -373,26 +427,31 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Backup'),
-        content: Text('Are you sure you want to delete ${backup['name']}?'),
+        title: Text('web_delete_backup_title'.tr()),
+        content: Text('web_delete_backup_confirm'.tr(args: ['${backup['name']}'])),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                backups.remove(backup);
-                backupCount--;
-              });
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Backup deleted'), backgroundColor: Colors.red),
-              );
+              final success = await WebApiService.deleteBackup(backup['id'] as int);
+              if (!mounted) return;
+              if (success) {
+                setState(() => backups.remove(backup));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('web_backup_deleted'.tr()), backgroundColor: Colors.red),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('web_backup_delete_failed'.tr()), backgroundColor: Colors.red),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text('delete_button'.tr()),
           ),
         ],
       ),
@@ -405,24 +464,26 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Backup & Restore'),
+        title: Text('web_menu_backup_restore'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
             // Backup Status Cards - CLICKABLE WITH DETAILS
             Row(
               children: [
-                _buildStatusCard('Last Backup', lastBackupTime, Icons.backup, Colors.blue, onTap: _showLastBackupDetails),
+                _buildStatusCard('web_last_backup'.tr(), lastBackupTime, Icons.backup, Colors.blue, onTap: _showLastBackupDetails),
                 const SizedBox(width: 16),
-                _buildStatusCard('Backup Size', lastBackupSize, Icons.storage, Colors.green, onTap: _showBackupSizeDetails),
+                _buildStatusCard('web_backup_size_label'.tr(), lastBackupSize, Icons.storage, Colors.green, onTap: _showBackupSizeDetails),
                 const SizedBox(width: 16),
-                _buildStatusCard('Total Backups', backupCount.toString(), Icons.archive, Colors.orange, onTap: _showTotalBackupSummary),
+                _buildStatusCard('web_total_backups'.tr(), backupCount.toString(), Icons.archive, Colors.orange, onTap: _showTotalBackupSummary),
                 const SizedBox(width: 16),
-                _buildStatusCard('Backup Status', backupStatus, Icons.check_circle, backupStatus == 'Success' ? Colors.green : Colors.red, onTap: _showBackupStatusDetails),
+                _buildStatusCard('web_backup_status_label'.tr(), _statusLabel(backupStatus), Icons.check_circle, backupStatus == 'Success' ? Colors.green : Colors.red, onTap: _showBackupStatusDetails),
               ],
             ),
             const SizedBox(height: 24),
@@ -437,17 +498,17 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
               ),
               child: Column(
                 children: [
-                  const Text('Backup Actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('web_backup_actions_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Row(
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: isBackingUp ? null : _performBackup,
-                          icon: isBackingUp 
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                          icon: isBackingUp
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.backup),
-                          label: Text(isBackingUp ? 'Backing up...' : 'Create Full Backup'),
+                          label: Text(isBackingUp ? 'web_backing_up'.tr() : 'web_create_full_backup'.tr()),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1A56DB),
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -457,36 +518,25 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                title: const Text('Restore from Backup'),
-                                content: const Text('This will overwrite all current data. Are you sure you want to continue?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                                  ElevatedButton(
-                                    onPressed: () async {
-                                      setState(() => isRestoring = true);
-                                      Navigator.pop(context);
-                                      await Future.delayed(const Duration(seconds: 2));
-                                      setState(() => isRestoring = false);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Restore completed.'), backgroundColor: Colors.green),
-                                      );
-                                    },
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                    child: const Text('Restore'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          icon: isRestoring 
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                          onPressed: isRestoring
+                              ? null
+                              : () {
+                                  if (backups.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('web_no_backup_found'.tr()), backgroundColor: Colors.red),
+                                    );
+                                    return;
+                                  }
+                                  // Restores the most recent backup — the confirmation
+                                  // dialog names it explicitly, so this is never a
+                                  // "blind" restore even though the button itself
+                                  // doesn't ask which backup to use.
+                                  _restoreBackup(backups.first);
+                                },
+                          icon: isRestoring
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.restore),
-                          label: Text(isRestoring ? 'Restoring...' : 'Restore from Backup'),
+                          label: Text(isRestoring ? 'web_restoring'.tr() : 'web_restore_from_backup_button'.tr()),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Colors.red),
                             foregroundColor: Colors.red,
@@ -506,7 +556,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
               margin: const EdgeInsets.only(bottom: 16),
               child: Row(
                 children: [
-                  const Text('Filter: ', style: TextStyle(fontWeight: FontWeight.w500)),
+                  Text('web_filter_label'.tr(), style: const TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(width: 12),
                   _buildFilterChip('All', _selectedBackupFilter == 'All', () {
                     setState(() => _selectedBackupFilter = 'All');
@@ -520,7 +570,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
                     setState(() => _selectedBackupFilter = 'Incremental');
                   }),
                   const Spacer(),
-                  Text('Total: ${filtered.length} backups', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text('web_total_backups_count'.tr(args: ['${filtered.length}']), style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
               ),
             ),
@@ -535,9 +585,9 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text('Backup History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text('web_backup_history_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                   const Divider(height: 1),
                   SizedBox(
@@ -546,12 +596,12 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
                       scrollDirection: Axis.horizontal,
                       child: DataTable(
                         columnSpacing: 40,
-                        columns: const [
-                          DataColumn(label: Text('Backup Name')),
-                          DataColumn(label: Text('Date & Time')),
-                          DataColumn(label: Text('Size')),
-                          DataColumn(label: Text('Type')),
-                          DataColumn(label: Text('Actions')),
+                        columns: [
+                          DataColumn(label: Text('web_backup_name_label'.tr())),
+                          DataColumn(label: Text('web_col_datetime'.tr())),
+                          DataColumn(label: Text('web_col_size'.tr())),
+                          DataColumn(label: Text('web_col_type'.tr())),
+                          DataColumn(label: Text('web_col_actions'.tr())),
                         ],
                         rows: filtered.map((backup) {
                           return DataRow(cells: [
@@ -569,24 +619,24 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
                                 color: backup['type'] == 'Full' ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(backup['type'], style: TextStyle(color: backup['type'] == 'Full' ? Colors.green : Colors.blue)),
+                              child: Text(_typeLabel(backup['type'] as String), style: TextStyle(color: backup['type'] == 'Full' ? Colors.green : Colors.blue)),
                             )),
                             DataCell(Row(
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.download, size: 18),
                                   onPressed: () => _downloadBackup(backup),
-                                  tooltip: 'Download',
+                                  tooltip: 'web_download'.tr(),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.restore, size: 18),
                                   onPressed: () => _restoreBackup(backup),
-                                  tooltip: 'Restore',
+                                  tooltip: 'web_restore_button'.tr(),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete, size: 18, color: Colors.red),
                                   onPressed: () => _deleteBackup(backup),
-                                  tooltip: 'Delete',
+                                  tooltip: 'delete_button'.tr(),
                                 ),
                               ],
                             )),
@@ -607,7 +657,7 @@ class _WebBackupRestoreState extends State<WebBackupRestore> {
 
   Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
     return FilterChip(
-      label: Text(label),
+      label: Text(_typeLabel(label)),
       selected: isSelected,
       onSelected: (_) => onTap(),
       selectedColor: const Color(0xFF1A56DB),

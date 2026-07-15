@@ -1,4 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'web_api_service.dart';
 
 class WebDocumentManagement extends StatefulWidget {
   const WebDocumentManagement({super.key});
@@ -11,73 +18,108 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
   String selectedFilter = 'All';
   final List<String> filters = ['All', 'Pending', 'Approved', 'Rejected', 'Shared'];
 
-  List<Map<String, dynamic>> documents = [
-    {
-      'name': 'K.N.T. Nikethani',
-      'nic': '200486403960',
-      'docType': 'NIC',
-      'date': '25 May 2026',
-      'status': 'Approved',
-      'file': 'nic_copy.pdf',
-      'sharedWith': [],
-      'sharedCount': 0,
-      'rejectionReason': null,
-      'reviewedBy': 'Admin User',
-      'reviewedAt': '25 May 2026, 10:30 AM',
-    },
-    {
-      'name': 'Saman Perera',
-      'nic': '855420159V',
-      'docType': 'Passport',
-      'date': '24 May 2026',
-      'status': 'Approved',
-      'file': 'passport.pdf',
-      'sharedWith': ['RMV - Werahera'],
-      'sharedCount': 1,
-      'rejectionReason': null,
-      'reviewedBy': 'Queue Officer',
-      'reviewedAt': '24 May 2026, 02:15 PM',
-    },
-    {
-      'name': 'Mala Kumari',
-      'nic': '925230080V',
-      'docType': 'Driving License',
-      'date': '23 May 2026',
-      'status': 'Pending',
-      'file': 'license.pdf',
-      'sharedWith': [],
-      'sharedCount': 0,
-      'rejectionReason': null,
-      'reviewedBy': null,
-      'reviewedAt': null,
-    },
-    {
-      'name': 'Ruwan Jaya',
-      'nic': '1987456321',
-      'docType': 'Birth Certificate',
-      'date': '22 May 2026',
-      'status': 'Approved',
-      'file': 'birth.pdf',
-      'sharedWith': ['Divisional Secretariat - Colombo', 'Department of Registration'],
-      'sharedCount': 2,
-      'rejectionReason': null,
-      'reviewedBy': 'Admin User',
-      'reviewedAt': '22 May 2026, 09:45 AM',
-    },
-    {
-      'name': 'Nimal Silva',
-      'nic': '1978123456',
-      'docType': 'Police Clearance',
-      'date': '21 May 2026',
-      'status': 'Rejected',
-      'file': 'police.pdf',
-      'sharedWith': [],
-      'sharedCount': 0,
-      'rejectionReason': 'Document is blurry and unreadable. Please upload a clear copy.',
-      'reviewedBy': 'Service Officer',
-      'reviewedAt': '21 May 2026, 04:20 PM',
-    },
-  ];
+  List<Map<String, dynamic>> documents = [];
+  socket_io.Socket? _socket;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDocumentsFromApi();
+    _socket = socket_io.io(
+      'http://localhost:3000',
+      socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+    );
+    _socket!.on('document_update', (_) => _loadDocumentsFromApi());
+    _socket!.connect();
+  }
+
+  @override
+  void dispose() {
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  String _capitalize(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('d MMM yyyy').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _formatDateTime(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('d MMM yyyy, hh:mm a').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'Pending': return 'web_status_pending'.tr();
+      case 'Approved': return 'web_status_approved'.tr();
+      case 'Rejected': return 'web_status_rejected'.tr();
+      case 'All': return 'web_status_all'.tr();
+      case 'Shared': return 'web_status_shared'.tr();
+      default: return status;
+    }
+  }
+
+  Future<void> _loadDocumentsFromApi() async {
+    final rows = await WebApiService.getDocuments();
+    if (!mounted) return;
+    setState(() {
+      documents = rows.map((r) {
+        final sharedWith = (r['shared_with'] as List?)?.cast<String>() ?? const <String>[];
+        return {
+          'id': r['id'],
+          'name': r['citizen_name'] ?? '',
+          'nic': r['citizen_nic'],
+          'docType': r['document_type'] ?? '',
+          'date': _formatDate(r['uploaded_at']?.toString()),
+          'status': _capitalize(r['status']?.toString() ?? 'pending'),
+          'file': r['document_name'] ?? '',
+          'filePath': r['file_path'],
+          'sharedWith': sharedWith,
+          'sharedCount': sharedWith.length,
+          'rejectionReason': r['rejection_reason'],
+          'reviewedBy': r['reviewed_by_name'],
+          'reviewedAt': _formatDateTime(r['reviewed_at']?.toString()),
+        };
+      }).toList();
+    });
+  }
+
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection (the same one the citizen app's Notifications screen reads
+  /// live). Looks the uid up through `nic_index`, same as login does.
+  Future<void> _notifyCitizenByNic({
+    required String? nic,
+    required String title,
+    required String message,
+  }) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'document',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyCitizenByNic error: $e');
+    }
+  }
 
   final List<Map<String, dynamic>> departments = [
     {'name': 'RMV - Werahera', 'icon': Icons.directions_car, 'color': const Color(0xFF1A56DB)},
@@ -94,34 +136,37 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
   void _approveDocument(Map<String, dynamic> doc) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Approve Document'),
+      builder: (dialogContext) => AlertDialog(
+        title: Text('web_approve_document_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Document: ${doc['file']}'),
+            Text('web_document_colon'.tr(args: ['${doc['file']}'])),
             const SizedBox(height: 8),
-            Text('Citizen: ${doc['name']}'),
+            Text('web_citizen_label'.tr(args: ['${doc['name']}'])),
             const SizedBox(height: 8),
-            Text('Type: ${doc['docType']}'),
+            Text('web_type_label'.tr(args: ['${doc['docType']}'])),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                doc['status'] = 'Approved';
-                doc['reviewedBy'] = 'Current Officer';
-                doc['reviewedAt'] = DateTime.now().toString().substring(0, 16);
-              });
-              Navigator.pop(context);
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await WebApiService.approveDocument(doc['id'] as int, 'Document Officer');
+              _notifyCitizenByNic(
+                nic: doc['nic'] as String?,
+                title: 'Document Approved',
+                message: 'Your ${doc['docType']} document has been approved.',
+              );
+              await _loadDocumentsFromApi();
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Document approved successfully'),
+                SnackBar(
+                  content: Text('web_document_approved_success'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -129,7 +174,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
             ),
-            child: const Text('Approve'),
+            child: Text('web_approve_button'.tr()),
           ),
         ],
       ),
@@ -140,53 +185,56 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
     final reasonController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reject Document'),
+      builder: (dialogContext) => AlertDialog(
+        title: Text('web_reject_document_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Document: ${doc['file']}'),
+            Text('web_document_colon'.tr(args: ['${doc['file']}'])),
             const SizedBox(height: 8),
-            Text('Citizen: ${doc['name']}'),
+            Text('web_citizen_label'.tr(args: ['${doc['name']}'])),
             const SizedBox(height: 12),
-            const Text('Please provide a reason for rejection:'),
+            Text('web_reject_reason_prompt'.tr()),
             const SizedBox(height: 8),
             TextField(
               controller: reasonController,
               maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Reason for rejection...',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: 'web_reason_for_rejection_hint'.tr(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please provide a reason for rejection'),
+            onPressed: () async {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text('web_provide_rejection_reason_snackbar'.tr()),
                     backgroundColor: Colors.red,
                   ),
                 );
                 return;
               }
-              setState(() {
-                doc['status'] = 'Rejected';
-                doc['rejectionReason'] = reasonController.text.trim();
-                doc['reviewedBy'] = 'Current Officer';
-                doc['reviewedAt'] = DateTime.now().toString().substring(0, 16);
-              });
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
+              await WebApiService.rejectDocument(doc['id'] as int, 'Document Officer', reason: reason);
+              _notifyCitizenByNic(
+                nic: doc['nic'] as String?,
+                title: 'Document Rejected',
+                message: 'Your ${doc['docType']} document was rejected. Reason: $reason',
+              );
+              await _loadDocumentsFromApi();
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Document rejected'),
+                SnackBar(
+                  content: Text('web_document_rejected_success'.tr()),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -194,7 +242,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('Reject'),
+            child: Text('web_reject_button'.tr()),
           ),
         ],
       ),
@@ -205,12 +253,12 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rejection Reason'),
-        content: Text(doc['rejectionReason'] ?? 'No reason provided'),
+        title: Text('web_rejection_reason_title'.tr()),
+        content: Text(doc['rejectionReason'] ?? 'web_no_reason_provided'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text('close'.tr()),
           ),
         ],
       ),
@@ -224,9 +272,9 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
+          builder: (BuildContext dialogContext, StateSetter setModalState) {
             return Container(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -244,15 +292,15 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                         child: const Icon(Icons.share, color: Color(0xFF1A56DB)),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Cross-Department Sharing',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          'web_cross_dept_sharing_title'.tr(),
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.pop(dialogContext),
                       ),
                     ],
                   ),
@@ -266,9 +314,9 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Document: ${doc['file']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('Citizen: ${doc['name']} (${doc['nic']})', style: const TextStyle(fontSize: 12)),
-                        Text('Document Type: ${doc['docType']}', style: const TextStyle(fontSize: 12)),
+                        Text('web_document_colon'.tr(args: ['${doc['file']}']), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('web_citizen_label'.tr(args: ['${doc['name']} (${doc['nic'] ?? '—'})']), style: const TextStyle(fontSize: 12)),
+                        Text('web_document_type_label'.tr(args: ['${doc['docType']}']), style: const TextStyle(fontSize: 12)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -279,7 +327,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            'Status: ${doc['status']}',
+                            'web_status_colon_label'.tr(args: [_statusLabel(doc['status'] as String)]),
                             style: TextStyle(
                               fontSize: 11,
                               color: doc['status'] == 'Approved' ? Colors.green : 
@@ -292,19 +340,19 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
-                    'Share with Departments:',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  Text(
+                    'web_share_with_departments'.tr(),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Select departments that need access to this document',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  Text(
+                    'web_select_departments_hint'.tr(),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const SizedBox(height: 16),
                   Container(
                     constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.4,
+                      maxHeight: MediaQuery.of(dialogContext).size.height * 0.4,
                     ),
                     child: ListView.separated(
                       shrinkWrap: true,
@@ -345,8 +393,8 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Shared documents will be accessible to officers in selected departments.',
-                            style: TextStyle(fontSize: 11, color: const Color(0xFF1A56DB)),
+                            'web_shared_docs_accessible_hint'.tr(),
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB)),
                           ),
                         ),
                       ],
@@ -357,26 +405,29 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () => Navigator.pop(dialogContext),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Colors.grey),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          child: const Text('Cancel'),
+                          child: Text('cancel'.tr()),
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              doc['sharedWith'] = tempSelectedDepartments;
-                              doc['sharedCount'] = tempSelectedDepartments.length;
-                            });
-                            Navigator.pop(context);
+                          onPressed: () async {
+                            Navigator.pop(dialogContext);
+                            await WebApiService.shareDocument(
+                              doc['id'] as int,
+                              tempSelectedDepartments,
+                              sharedBy: 'Document Officer',
+                            );
+                            await _loadDocumentsFromApi();
+                            if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Document shared with ${tempSelectedDepartments.length} department(s)'),
+                                content: Text('web_document_shared_count'.tr(args: ['${tempSelectedDepartments.length}'])),
                                 backgroundColor: Colors.green,
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -386,7 +437,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                             backgroundColor: const Color(0xFF1A56DB),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          child: const Text('Share Document'),
+                          child: Text('web_share_document_button'.tr()),
                         ),
                       ),
                     ],
@@ -411,7 +462,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Document Management'),
+        title: Text('web_document_management_title'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -422,22 +473,22 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
             // Stats Cards
             Row(
               children: [
-                _buildStatCard('Total Documents', documents.length.toString(), Colors.blue),
+                _buildStatCard('web_total_documents'.tr(), documents.length.toString(), Colors.blue),
                 const SizedBox(width: 12),
-                _buildStatCard('Pending', 
-                    documents.where((d) => d['status'] == 'Pending').length.toString(), 
+                _buildStatCard('web_status_pending'.tr(),
+                    documents.where((d) => d['status'] == 'Pending').length.toString(),
                     Colors.orange),
                 const SizedBox(width: 12),
-                _buildStatCard('Approved', 
-                    documents.where((d) => d['status'] == 'Approved').length.toString(), 
+                _buildStatCard('web_status_approved'.tr(),
+                    documents.where((d) => d['status'] == 'Approved').length.toString(),
                     Colors.green),
                 const SizedBox(width: 12),
-                _buildStatCard('Rejected', 
-                    documents.where((d) => d['status'] == 'Rejected').length.toString(), 
+                _buildStatCard('web_status_rejected'.tr(),
+                    documents.where((d) => d['status'] == 'Rejected').length.toString(),
                     Colors.red),
                 const SizedBox(width: 12),
-                _buildStatCard('Shared', 
-                    documents.where((d) => d['sharedCount'] > 0).length.toString(), 
+                _buildStatCard('web_status_shared'.tr(),
+                    documents.where((d) => d['sharedCount'] > 0).length.toString(),
                     const Color(0xFF1A56DB)),
               ],
             ),
@@ -454,7 +505,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                   final filter = filters[index];
                   final isSelected = selectedFilter == filter;
                   return FilterChip(
-                    label: Text(filter),
+                    label: Text(_statusLabel(filter)),
                     selected: isSelected,
                     onSelected: (_) => setState(() => selectedFilter = filter),
                     selectedColor: const Color(0xFF1A56DB),
@@ -478,14 +529,14 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                     child: DataTable(
                       columnSpacing: 16,
                       dataRowHeight: 60,
-                      columns: const [
-                        DataColumn(label: Text('Citizen Name', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('NIC', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('Document Type', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('Upload Date', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('Shared With', style: TextStyle(fontWeight: FontWeight.w600))),
-                        DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.w600))),
+                      columns: [
+                        DataColumn(label: Text('web_citizen_name'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_nic'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_document_type'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_upload_date'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_status'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_shared_with'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataColumn(label: Text('web_col_actions'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                       ],
                       rows: filteredDocs.map((doc) {
                         Color statusColor = doc['status'] == 'Approved' 
@@ -493,7 +544,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                             : (doc['status'] == 'Pending' ? Colors.orange : Colors.red);
                         return DataRow(cells: [
                           DataCell(Text(doc['name'])),
-                          DataCell(Text(doc['nic'])),
+                          DataCell(Text(doc['nic'] ?? '—')),
                           DataCell(Text(doc['docType'])),
                           DataCell(Text(doc['date'])),
                           DataCell(
@@ -513,7 +564,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                     color: statusColor,
                                   ),
                                   const SizedBox(width: 4),
-                                  Text(doc['status'], 
+                                  Text(_statusLabel(doc['status'] as String),
                                     style: TextStyle(color: statusColor, fontWeight: FontWeight.w600)),
                                 ],
                               ),
@@ -521,7 +572,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                           ),
                           DataCell(
                             doc['sharedCount'] == 0
-                                ? const Text('Not shared', style: TextStyle(color: Colors.grey))
+                                ? Text('web_not_shared'.tr(), style: const TextStyle(color: Colors.grey))
                                 : Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
@@ -529,7 +580,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
-                                      '${doc['sharedCount']} dept(s)',
+                                      'web_dept_count'.tr(args: ['${doc['sharedCount']}']),
                                       style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB)),
                                     ),
                                   ),
@@ -542,11 +593,18 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                 IconButton(
                                   icon: const Icon(Icons.visibility, size: 18, color: Colors.blue),
                                   onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Viewing document - Coming Soon')),
+                                    if (doc['filePath'] == null) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('web_no_file_attached'.tr())),
+                                      );
+                                      return;
+                                    }
+                                    launchUrl(
+                                      Uri.parse('http://localhost:3000/api/web/documents/download/${doc['id']}'),
+                                      webOnlyWindowName: '_blank',
                                     );
                                   },
-                                  tooltip: 'View Document',
+                                  tooltip: 'web_view_document_tooltip'.tr(),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
@@ -555,14 +613,14 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                   IconButton(
                                     icon: const Icon(Icons.check_circle, size: 18, color: Colors.green),
                                     onPressed: () => _approveDocument(doc),
-                                    tooltip: 'Approve',
+                                    tooltip: 'web_approve_tooltip'.tr(),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.cancel, size: 18, color: Colors.red),
                                     onPressed: () => _rejectDocument(doc),
-                                    tooltip: 'Reject',
+                                    tooltip: 'web_reject_tooltip'.tr(),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),
@@ -572,7 +630,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                   IconButton(
                                     icon: const Icon(Icons.info_outline, size: 18, color: Colors.red),
                                     onPressed: () => _showRejectionReason(doc),
-                                    tooltip: 'View Rejection Reason',
+                                    tooltip: 'web_view_rejection_reason_tooltip'.tr(),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),
@@ -580,7 +638,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                 IconButton(
                                   icon: const Icon(Icons.share, size: 18, color: Color(0xFF1A56DB)),
                                   onPressed: () => _showShareDialog(doc),
-                                  tooltip: 'Cross-Department Sharing',
+                                  tooltip: 'web_cross_dept_sharing_title'.tr(),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),

@@ -10,6 +10,6 @@
 /// machine as the backend, so it correctly keeps using `localhost` and is
 /// not affected by this.
 class BackendConfig {
-  static const String lanIp = '192.168.8.185';
+  static const String lanIp = '192.168.1.8';
   static const String baseUrl = 'http://$lanIp:3000';
 }

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'web_role_model.dart';
+import 'web_api_service.dart';
 
 /// Persistent, browsable notification history for officers — reads live
 /// from the same `staff_notifications` collection the dashboard bell
@@ -77,16 +79,18 @@ class _WebNotificationsState extends State<WebNotifications> {
       'time': _relativeTime(createdAt?.toDate()),
       'read': readBy.contains(widget.staffId),
       'dismissed': dismissedBy.contains(widget.staffId),
+      'token': data['token'] as String?,
+      'nic': data['nic'] as String?,
     };
   }
 
   String _relativeTime(DateTime? time) {
     if (time == null) return '—';
     final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
-    if (diff.inDays < 7) return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+    if (diff.inMinutes < 1) return 'web_just_now'.tr();
+    if (diff.inMinutes < 60) return '${diff.inMinutes} ${'web_min_ago'.tr()}';
+    if (diff.inHours < 24) return '${diff.inHours} ${(diff.inHours > 1 ? 'web_hours_ago' : 'web_hour_ago').tr()}';
+    if (diff.inDays < 7) return '${diff.inDays} ${(diff.inDays > 1 ? 'web_days_ago' : 'web_day_ago').tr()}';
     return '${time.day}/${time.month}/${time.year}';
   }
 
@@ -108,7 +112,7 @@ class _WebNotificationsState extends State<WebNotifications> {
     await batch.commit();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All notifications marked as read'), backgroundColor: Colors.green),
+      SnackBar(content: Text('web_all_notifications_marked_read'.tr()), backgroundColor: Colors.green),
     );
   }
 
@@ -118,6 +122,51 @@ class _WebNotificationsState extends State<WebNotifications> {
     }, SetOptions(merge: true));
   }
 
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection the citizen app's Notifications screen reads live, looking
+  /// the uid up through `nic_index` (same lookup login/service-processing use).
+  Future<void> _notifyCitizenByNic(String? nic, String title, String message) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'queue',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  /// Approves or rejects a citizen's priority-queue request: flips
+  /// `is_priority` on their queue entry via the backend, tells the citizen
+  /// the outcome, and archives the request so it stops showing as pending.
+  Future<void> _resolvePriorityRequest(Map<String, dynamic> notif, bool approve) async {
+    final token = notif['token'] as String?;
+    if (token != null) {
+      await WebApiService.setQueuePriority(token, approve, officerName: widget.staffId);
+    }
+    await _notifyCitizenByNic(
+      notif['nic'] as String?,
+      approve ? 'Priority Request Approved' : 'Priority Request Declined',
+      approve
+          ? 'Your priority queue request for token $token has been approved.'
+          : 'Your priority queue request for token $token was not approved.',
+    );
+    await _archive(notif['id'] as String);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(approve ? 'Priority request approved' : 'Priority request rejected'),
+        backgroundColor: approve ? Colors.green : Colors.grey,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final unreadCount = _notifications.where((n) => n['read'] == false).length;
@@ -125,7 +174,7 @@ class _WebNotificationsState extends State<WebNotifications> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('Notification History'),
+            Text('web_menu_notification_history'.tr()),
             if (unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(left: 8),
@@ -144,22 +193,22 @@ class _WebNotificationsState extends State<WebNotifications> {
           if (unreadCount > 0)
             TextButton(
               onPressed: _markAllAsRead,
-              child: const Text('Mark all read'),
+              child: Text('web_mark_all_read'.tr()),
             ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _notifications.isEmpty
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.notifications_none, size: 80, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('No notifications', style: TextStyle(color: Colors.grey)),
-                      SizedBox(height: 8),
-                      Text('You\'re all caught up!', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const Icon(Icons.notifications_none, size: 80, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text('web_no_notifications'.tr(), style: const TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      Text('web_all_caught_up'.tr(), style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ],
                   ),
                 )
@@ -308,37 +357,66 @@ class _WebNotificationsState extends State<WebNotifications> {
                         child: Text(notif['message'] as String, style: const TextStyle(fontSize: 14, height: 1.5)),
                       ),
                       const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                _archive(notif['id'] as String);
-                                Navigator.pop(context);
-                              },
-                              icon: const Icon(Icons.archive),
-                              label: const Text('Archive'),
+                      if (notif['type'] == 'priority_request')
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _resolvePriorityRequest(notif, false);
+                                },
+                                icon: const Icon(Icons.close),
+                                label: const Text('Reject'),
+                                style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('${notif['action']} — see the relevant module in the sidebar'),
-                                    backgroundColor: const Color(0xFF1A56DB),
-                                  ),
-                                );
-                              },
-                              icon: Icon(_getActionIcon(notif['action'] as String)),
-                              label: Text(notif['action'] as String),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _resolvePriorityRequest(notif, true);
+                                },
+                                icon: const Icon(Icons.check_circle),
+                                label: const Text('Approve'),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  _archive(notif['id'] as String);
+                                  Navigator.pop(context);
+                                },
+                                icon: const Icon(Icons.archive),
+                                label: Text('web_archive_button'.tr()),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('web_action_see_sidebar_module'.tr(args: ['${notif['action']}'])),
+                                      backgroundColor: const Color(0xFF1A56DB),
+                                    ),
+                                  );
+                                },
+                                icon: Icon(_getActionIcon(notif['action'] as String)),
+                                label: Text(notif['action'] as String),
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
@@ -354,6 +432,7 @@ class _WebNotificationsState extends State<WebNotifications> {
     switch (type) {
       case 'appointment': return Colors.orange;
       case 'queue': return Colors.blue;
+      case 'priority_request': return Colors.deepOrange;
       case 'document': return Colors.purple;
       case 'system': return Colors.green;
       default: return const Color(0xFF1A56DB);
@@ -364,6 +443,7 @@ class _WebNotificationsState extends State<WebNotifications> {
     switch (type) {
       case 'appointment': return Icons.calendar_today;
       case 'queue': return Icons.queue;
+      case 'priority_request': return Icons.priority_high;
       case 'document': return Icons.description;
       case 'system': return Icons.settings;
       default: return Icons.notifications;

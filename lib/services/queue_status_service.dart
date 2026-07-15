@@ -31,6 +31,78 @@ class QueueStatusService {
     return {'found': false};
   }
 
+  /// Office-wide queue stats (waiting/serving counts, the token currently
+  /// being served, average wait) from the same endpoint the officer's Queue
+  /// Management dashboard uses. Returns `{}` on failure.
+  static Future<Map<String, dynamic>> getOfficeStats(String officeId) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/web/queue/stats/${Uri.encodeComponent(officeId)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getOfficeStats error: $e');
+    }
+    return {};
+  }
+
+  /// Full list of citizens currently waiting at [officeId], ordered the same
+  /// way the officer dashboard's "Call Next" picks from it (oldest first).
+  /// Returns `[]` on failure.
+  static Future<List<Map<String, dynamic>>> getWaitingList(String officeId) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/web/queue/${Uri.encodeComponent(officeId)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body) as List;
+        return decoded.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getWaitingList error: $e');
+    }
+    return [];
+  }
+
+  /// This citizen's average wait time (minutes) across all their completed
+  /// queue entries, any office. Returns null if there's no history yet.
+  static Future<double?> getCitizenAvgWaitMinutes(String nic) async {
+    if (nic.isEmpty) return null;
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/web/queue/stats/citizen/${Uri.encodeComponent(nic)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return (data['avgWaitMinutes'] as num?)?.toDouble();
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getCitizenAvgWaitMinutes error: $e');
+    }
+    return null;
+  }
+
+  /// This citizen's average feedback rating (out of 5) across everything
+  /// they've submitted via the Feedback screen. Returns null if they haven't
+  /// left any feedback yet.
+  static Future<double?> getCitizenAvgRating(String nic) async {
+    if (nic.isEmpty) return null;
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/web/feedback/citizen/${Uri.encodeComponent(nic)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return (data['avgRating'] as num?)?.toDouble();
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getCitizenAvgRating error: $e');
+    }
+    return null;
+  }
+
   /// Opens a Socket.IO connection to the backend so callers can react the
   /// moment an officer calls next / completes / cancels / adds a queue
   /// entry (the backend already emits these — `server.js` `io.emit('queue_update', ...)`

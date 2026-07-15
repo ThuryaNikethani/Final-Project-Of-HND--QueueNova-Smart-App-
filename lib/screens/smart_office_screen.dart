@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
 import 'package:queuenova_mobile/services/ml_prediction_service.dart';
+import 'package:queuenova_mobile/services/location_service.dart';
 
 const Map<String, String> _kCrowdLabelKeys = {
   'Low': 'crowd_level_low',
@@ -21,48 +23,65 @@ class SmartOfficeScreen extends StatefulWidget {
 }
 
 class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
-  // Static office info — name, address, distance are fixed; crowd/wait/recommended come from ML
+  // Static office info — name, address, coordinates are fixed; crowd/wait/
+  // recommended come from ML. 'distance' is the fallback shown when Location
+  // Access is off or unavailable; when on, real GPS distance replaces it.
   static const List<Map<String, dynamic>> _staticOffices = [
     {
       'name': 'Colombo Divisional Secretariat',
       'address': 'Dam Street, Colombo 12',
       'distance': '2.5 km',
       'officeId': 'Divisional Secretariat - Colombo',
+      'lat': 6.9410,
+      'lng': 79.8510,
     },
     {
       'name': 'RMV - Kiribathgoda',
       'address': 'Kiribathgoda',
       'distance': '12.8 km',
       'officeId': 'RMV - Kiribathgoda',
+      'lat': 6.9779,
+      'lng': 79.9294,
     },
     {
       'name': 'Sri Jayawardanapura Kotte Divisional Secretariat',
       'address': '341/3, Kotte Road, Rajagiriya',
       'distance': '6.5 km',
       'officeId': 'Divisional Secretariat - Nugegoda',
+      'lat': 6.9067,
+      'lng': 79.9021,
     },
     {
       'name': 'RMV - Werahera',
       'address': 'Department of Motor Traffic Road, Boralesgamuwa',
       'distance': '15.3 km',
       'officeId': 'RMV - Werahera',
+      'lat': 6.8399,
+      'lng': 79.9070,
     },
     {
       'name': 'Passport Office - Battaramulla',
       'address': 'Suhurupaya, Sri Subuthipura Road, Battaramulla',
       'distance': '8.2 km',
       'officeId': 'Passport Office - Battaramulla',
+      'lat': 6.9034,
+      'lng': 79.9187,
     },
     {
       'name': 'Kandy Four Gravets & Gangawata Korale Divisional Secretariat',
       'address': 'Kandy',
       'distance': '115 km',
       'officeId': 'Divisional Secretariat - Kandy',
+      'lat': 7.2906,
+      'lng': 80.6337,
     },
   ];
 
   // ML-predicted data per officeId
   Map<String, QueuePrediction> _predictions = {};
+  // Real GPS distance per officeId (km), populated only when Location Access
+  // is on and a position fix succeeds. Falls back to the static string otherwise.
+  Map<String, double> _liveDistancesKm = {};
   Timer? _refreshTimer;
   bool _isLoading = true;
 
@@ -70,6 +89,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
   void initState() {
     super.initState();
     _refreshPredictions();
+    _refreshLiveDistances();
     // Refresh ML predictions every 60 seconds
     _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) _refreshPredictions();
@@ -80,6 +100,25 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshLiveDistances() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('location_enabled') ?? true)) return;
+
+    final position = await LocationService.getCurrentPosition();
+    if (position == null || !mounted) return;
+
+    final distances = <String, double>{};
+    for (final office in _staticOffices) {
+      distances[office['officeId'] as String] = LocationService.distanceKm(
+        lat1: position.latitude,
+        lon1: position.longitude,
+        lat2: office['lat'] as double,
+        lon2: office['lng'] as double,
+      );
+    }
+    setState(() => _liveDistancesKm = distances);
   }
 
   void _refreshPredictions() {
@@ -105,10 +144,11 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
     return _staticOffices.map((static_) {
       final id = static_['officeId'] as String;
       final pred = _predictions[id];
+      final liveKm = _liveDistancesKm[id];
       return {
         'name': static_['name'],
         'address': static_['address'],
-        'distance': static_['distance'],
+        'distance': liveKm != null ? '${liveKm.toStringAsFixed(1)} km' : static_['distance'],
         'officeId': id,
         'crowd': pred?.crowdLevel.label ?? 'Low',
         'waitMinutes': pred?.estimatedWaitMinutes,

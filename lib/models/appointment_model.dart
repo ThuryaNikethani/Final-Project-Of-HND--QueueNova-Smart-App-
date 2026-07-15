@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class AppointmentModel {
   final String id;
   final String service;
@@ -115,6 +117,10 @@ class DocumentAttachment {
   final String documentType;
   final bool isRequired;
   final DateTime uploadedAt;
+  // In-memory only (not serialized to JSON/Firestore — would bloat local
+  // storage). On Flutter Web there's no real filesystem, so `filePath` isn't
+  // readable; the actual upload to the backend reads these bytes instead.
+  final Uint8List? bytes;
 
   DocumentAttachment({
     required this.id,
@@ -123,6 +129,7 @@ class DocumentAttachment {
     required this.documentType,
     required this.isRequired,
     required this.uploadedAt,
+    this.bytes,
   });
 
   Map<String, dynamic> toJson() {

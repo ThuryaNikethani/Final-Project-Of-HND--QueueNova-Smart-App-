@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'web_api_service.dart';
 
 class WebServiceProcessing extends StatefulWidget {
   const WebServiceProcessing({super.key});
@@ -13,88 +18,72 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
   final List<String> filters = ['Pending', 'Processing', 'Approved', 'Rejected', 'All'];
   int pendingCount = 0;
 
-  List<Map<String, dynamic>> requests = [
-    {
-      'id': 'REQ001',
-      'citizen': 'K.N.T. Nikethani',
-      'nic': '200486403960',
-      'service': 'Passport Renewal',
-      'date': '25 May 2026',
-      'status': 'Pending',
-      'paymentStatus': 'paid',
-      'fee': 5000,
-      'documents': ['NIC Copy', 'Old Passport', 'Photos'],
-      'docUrls': ['nic.pdf', 'passport.pdf', 'photo.jpg'],
-      'comments': '',
-      'processedBy': '',
-      'processedAt': '',
-    },
-    {
-      'id': 'REQ002',
-      'citizen': 'Saman Perera',
-      'nic': '855420159V',
-      'service': 'NIC Card',
-      'date': '26 May 2026',
-      'status': 'Processing',
-      'paymentStatus': 'paid',
-      'fee': 500,
-      'documents': ['Birth Certificate', 'Application Form'],
-      'docUrls': ['birth.pdf', 'form.pdf'],
-      'comments': '',
-      'processedBy': 'Queue Officer',
-      'processedAt': '26 May 2026, 10:30 AM',
-    },
-    {
-      'id': 'REQ003',
-      'citizen': 'Mala Kumari',
-      'nic': '925230080V',
-      'service': 'Driving License',
-      'date': '27 May 2026',
-      'status': 'Pending',
-      'paymentStatus': 'pending',
-      'fee': 3000,
-      'documents': ['NIC Copy', 'Medical Report', 'Test Results'],
-      'docUrls': ['nic.pdf', 'medical.pdf', 'test.pdf'],
-      'comments': '',
-      'processedBy': '',
-      'processedAt': '',
-    },
-    {
-      'id': 'REQ004',
-      'citizen': 'Ruwan Jaya',
-      'nic': '1987456321',
-      'service': 'Birth Certificate',
-      'date': '28 May 2026',
-      'status': 'Approved',
-      'paymentStatus': 'paid',
-      'fee': 200,
-      'documents': ['Hospital Records', 'NIC Copy'],
-      'docUrls': ['hospital.pdf', 'nic.pdf'],
-      'comments': 'Documents verified successfully',
-      'processedBy': 'Service Officer',
-      'processedAt': '28 May 2026, 09:15 AM',
-    },
-    {
-      'id': 'REQ005',
-      'citizen': 'Nimal Silva',
-      'nic': '1978123456',
-      'service': 'Police Clearance',
-      'date': '29 May 2026',
-      'status': 'Rejected',
-      'paymentStatus': 'pending',
-      'fee': 1000,
-      'documents': ['Police Report', 'NIC Copy'],
-      'docUrls': ['report.pdf', 'nic.pdf'],
-      'comments': 'Incomplete documents. Please submit original police report.',
-      'processedBy': 'Service Officer',
-      'processedAt': '29 May 2026, 11:00 AM',
-    },
-  ];
+  List<Map<String, dynamic>> requests = [];
+  socket_io.Socket? _socket;
 
   @override
   void initState() {
     super.initState();
-    _updatePendingCount();
+    _loadRequestsFromApi();
+    _socket = socket_io.io(
+      'http://localhost:3000',
+      socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+    );
+    _socket!.on('document_update', (_) => _loadRequestsFromApi());
+    _socket!.connect();
+  }
+
+  @override
+  void dispose() {
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  String _capitalize(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('d MMM yyyy').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _formatDateTime(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    try {
+      return DateFormat('d MMM yyyy, hh:mm a').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  Future<void> _loadRequestsFromApi() async {
+    final rows = await WebApiService.getServiceRequests();
+    if (!mounted) return;
+    setState(() {
+      requests = rows.map((r) {
+        final docNames = (r['documents'] as List?)?.cast<String>() ?? const <String>[];
+        final docIds = (r['doc_ids'] as List?) ?? const [];
+        return {
+          'id': r['id'],
+          'citizen': r['citizen_name'] ?? '',
+          'nic': r['citizen_nic'],
+          'service': r['service'] ?? '',
+          'date': _formatDate(r['date']?.toString()),
+          'status': _capitalize(r['status']?.toString() ?? 'pending'),
+          'paymentStatus': r['payment_status'] ?? 'pending',
+          'fee': r['fee_amount'] ?? 0,
+          'documents': docNames,
+          'docUrls': docIds,
+          'comments': r['comments'] ?? '',
+          'processedBy': r['processed_by'] ?? '',
+          'processedAt': _formatDateTime(r['processed_at']?.toString()),
+        };
+      }).toList();
+      _updatePendingCount();
+    });
   }
 
   void _updatePendingCount() {
@@ -118,11 +107,22 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
     }
   }
 
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'Pending': return 'web_status_pending'.tr();
+      case 'Processing': return 'web_status_processing'.tr();
+      case 'Approved': return 'web_status_approved'.tr();
+      case 'Rejected': return 'web_status_rejected'.tr();
+      case 'All': return 'web_status_all'.tr();
+      default: return status;
+    }
+  }
+
   Color getPaymentColor(String paymentStatus) {
     return paymentStatus == 'paid' ? Colors.green : Colors.orange;
   }
 
-  void _showDocumentViewer(Map<String, dynamic> request, String docName) {
+  void _showDocumentViewer(Map<String, dynamic> request, String docName, int? docId) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -136,7 +136,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Document: $docName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('web_document_colon'.tr(args: [docName]), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
@@ -151,14 +151,14 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Center(
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.picture_as_pdf, size: 80, color: Colors.red),
-                      SizedBox(height: 16),
-                      Text('Document preview will appear here'),
-                      Text('Click download to save the file', style: TextStyle(fontSize: 12)),
+                      const Icon(Icons.picture_as_pdf, size: 80, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text('web_doc_preview_placeholder'.tr()),
+                      Text('web_click_download_hint'.tr(), style: const TextStyle(fontSize: 12)),
                     ],
                   ),
                 ),
@@ -168,15 +168,20 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
-                    onPressed: () {},
+                    onPressed: docId == null
+                        ? null
+                        : () => launchUrl(
+                              Uri.parse('http://localhost:3000/api/web/documents/download/$docId'),
+                              webOnlyWindowName: '_blank',
+                            ),
                     icon: const Icon(Icons.download),
-                    label: const Text('Download'),
+                    label: Text('web_download'.tr()),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.close),
-                    label: const Text('Close'),
+                    label: Text('close'.tr()),
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
                   ),
                 ],
@@ -205,18 +210,21 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Share Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('web_share_documents_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            const Text('Share this request\'s documents with other departments:', style: TextStyle(fontSize: 14)),
+            Text('web_share_documents_desc'.tr(), style: const TextStyle(fontSize: 14)),
             const SizedBox(height: 16),
             ...departments.map((dept) => ListTile(
               leading: const Icon(Icons.business, color: Color(0xFF1A56DB)),
               title: Text(dept),
               trailing: const Icon(Icons.share),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                await WebApiService.shareServiceRequest(request['id'] as int, [dept], sharedBy: 'Service Officer');
+                await _loadRequestsFromApi();
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Documents shared with $dept'), backgroundColor: Colors.green),
+                  SnackBar(content: Text('web_documents_shared_with'.tr(args: [dept])), backgroundColor: Colors.green),
                 );
               },
             )),
@@ -259,18 +267,18 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Reject Application'),
+        title: Text('web_reject_application_title'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Please provide a reason for rejection:'),
+            Text('web_reject_reason_prompt'.tr()),
             const SizedBox(height: 12),
             TextField(
               controller: reasonController,
               maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Enter rejection reason...',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: 'web_enter_rejection_reason_hint'.tr(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -278,29 +286,26 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                request['status'] = 'Rejected';
-                request['comments'] = reasonController.text;
-                request['processedBy'] = 'Service Officer';
-                request['processedAt'] = _getCurrentDateTime();
-              });
-              _updatePendingCount();
+            onPressed: () async {
+              final reason = reasonController.text;
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Application rejected'), backgroundColor: Colors.red),
-              );
+              await WebApiService.rejectServiceRequest(request['id'] as int, 'Service Officer', reason: reason);
               _notifyCitizenByNic(
                 nic: request['nic'] as String?,
                 title: 'Application Rejected',
-                message: 'Your ${request['service']} application has been rejected. Reason: ${reasonController.text}',
+                message: 'Your ${request['service']} application has been rejected. Reason: $reason',
+              );
+              await _loadRequestsFromApi();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('web_application_rejected'.tr()), backgroundColor: Colors.red),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Reject'),
+            child: Text('web_reject_button'.tr()),
           ),
         ],
       ),
@@ -313,12 +318,12 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
         context: context,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Payment Required'),
-          content: Text('Payment of Rs. ${request['fee']} is pending. Please confirm payment before approving.'),
+          title: Text('web_payment_required'.tr()),
+          content: Text('web_payment_pending_approve_message'.tr(args: ['${request['fee']}'])),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+              child: Text('ok'.tr()),
             ),
           ],
         ),
@@ -330,43 +335,34 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Approve Application'),
-        content: const Text('Are you sure you want to approve this application?'),
+        title: Text('web_approve_application_title'.tr()),
+        content: Text('web_approve_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                request['status'] = 'Approved';
-                request['comments'] = 'Application approved successfully';
-                request['processedBy'] = 'Service Officer';
-                request['processedAt'] = _getCurrentDateTime();
-              });
-              _updatePendingCount();
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Application approved'), backgroundColor: Colors.green),
-              );
+              await WebApiService.approveServiceRequest(request['id'] as int, 'Service Officer');
               _notifyCitizenByNic(
                 nic: request['nic'] as String?,
                 title: 'Application Approved',
                 message: 'Your ${request['service']} application has been approved.',
               );
+              await _loadRequestsFromApi();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('web_application_approved'.tr()), backgroundColor: Colors.green),
+              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Approve'),
+            child: Text('web_approve_button'.tr()),
           ),
         ],
       ),
     );
-  }
-
-  String _getCurrentDateTime() {
-    final now = DateTime.now();
-    return '${now.day}/${now.month}/${now.year}, ${now.hour}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}';
   }
 
   @override
@@ -375,7 +371,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Service Processing'),
+        title: Text('web_menu_service_processing'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -413,15 +409,15 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
           children: [
             Row(
               children: [
-                _buildStatCard('Pending', requests.where((r) => r['status'] == 'Pending').length.toString(), Colors.orange),
+                _buildStatCard('web_status_pending'.tr(), requests.where((r) => r['status'] == 'Pending').length.toString(), Colors.orange),
                 const SizedBox(width: 16),
-                _buildStatCard('Processing', requests.where((r) => r['status'] == 'Processing').length.toString(), Colors.blue),
+                _buildStatCard('web_status_processing'.tr(), requests.where((r) => r['status'] == 'Processing').length.toString(), Colors.blue),
                 const SizedBox(width: 16),
-                _buildStatCard('Approved', requests.where((r) => r['status'] == 'Approved').length.toString(), Colors.green),
+                _buildStatCard('web_status_approved'.tr(), requests.where((r) => r['status'] == 'Approved').length.toString(), Colors.green),
                 const SizedBox(width: 16),
-                _buildStatCard('Rejected', requests.where((r) => r['status'] == 'Rejected').length.toString(), Colors.red),
+                _buildStatCard('web_status_rejected'.tr(), requests.where((r) => r['status'] == 'Rejected').length.toString(), Colors.red),
                 const SizedBox(width: 16),
-                _buildStatCard('Pending Payments', requests.where((r) => r['paymentStatus'] == 'pending').length.toString(), Colors.orange),
+                _buildStatCard('web_pending_payments'.tr(), requests.where((r) => r['paymentStatus'] == 'pending').length.toString(), Colors.orange),
               ],
             ),
             const SizedBox(height: 24),
@@ -436,7 +432,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                   final filter = filters[index];
                   final isSelected = selectedFilter == filter;
                   return FilterChip(
-                    label: Text(filter),
+                    label: Text(_statusLabel(filter)),
                     selected: isSelected,
                     onSelected: (_) => setState(() => selectedFilter = filter),
                     selectedColor: const Color(0xFF1A56DB),
@@ -488,7 +484,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                                     ),
                                     Text(
-                                      'Request ID: ${request['id']}',
+                                      'web_request_id_label'.tr(args: ['${request['id']}']),
                                       style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                                     ),
                                   ],
@@ -513,7 +509,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        request['paymentStatus'] == 'paid' ? 'Paid' : 'Payment Pending',
+                                        request['paymentStatus'] == 'paid' ? 'web_paid'.tr() : 'web_payment_pending_short'.tr(),
                                         style: TextStyle(fontSize: 12, color: paymentColor, fontWeight: FontWeight.w600),
                                       ),
                                     ],
@@ -527,7 +523,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
-                                    request['status'],
+                                    _statusLabel(request['status']),
                                     style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w600),
                                   ),
                                 ),
@@ -540,10 +536,10 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Expanded(child: _buildInfoRow('Citizen Name', request['citizen'])),
-                            Expanded(child: _buildInfoRow('NIC Number', request['nic'])),
-                            Expanded(child: _buildInfoRow('Request Date', request['date'])),
-                            Expanded(child: _buildInfoRow('Fee', 'Rs. ${request['fee']}')),
+                            Expanded(child: _buildInfoRow('web_citizen_name'.tr(), request['citizen'])),
+                            Expanded(child: _buildInfoRow('web_nic_number'.tr(), request['nic'] ?? '—')),
+                            Expanded(child: _buildInfoRow('web_request_date'.tr(), request['date'])),
+                            Expanded(child: _buildInfoRow('web_fee_label'.tr(), 'Rs. ${request['fee']}')),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -560,11 +556,11 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                               children: [
                                 const Icon(Icons.history, size: 16, color: Colors.grey),
                                 const SizedBox(width: 8),
-                                Text('Processed by: ${request['processedBy']}'),
+                                Text('web_processed_by_label'.tr(args: ['${request['processedBy']}'])),
                                 const SizedBox(width: 16),
                                 const Icon(Icons.access_time, size: 16, color: Colors.grey),
                                 const SizedBox(width: 8),
-                                Text('Processed at: ${request['processedAt']}'),
+                                Text('web_processed_at_label'.tr(args: ['${request['processedAt']}'])),
                               ],
                             ),
                           ),
@@ -595,21 +591,21 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                               OutlinedButton.icon(
                                 onPressed: () => _showShareDialog(request),
                                 icon: const Icon(Icons.share),
-                                label: const Text('Share'),
+                                label: Text('web_share_button'.tr()),
                                 style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.blue)),
                               ),
                               const SizedBox(width: 12),
                               OutlinedButton.icon(
                                 onPressed: () => _showRejectDialog(request),
                                 icon: const Icon(Icons.close),
-                                label: const Text('Reject'),
+                                label: Text('web_reject_button'.tr()),
                                 style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
                               ),
                               const SizedBox(width: 12),
                               ElevatedButton.icon(
                                 onPressed: () => _showApproveDialog(request),
                                 icon: const Icon(Icons.check),
-                                label: const Text('Approve'),
+                                label: Text('web_approve_button'.tr()),
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                               ),
                             ],
@@ -662,14 +658,16 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Uploaded Documents', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('web_uploaded_documents'.tr(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           children: List.generate(request['documents'].length, (index) {
             final docName = request['documents'][index];
+            final docUrls = request['docUrls'] as List;
+            final docId = index < docUrls.length ? docUrls[index] as int? : null;
             return GestureDetector(
-              onTap: () => _showDocumentViewer(request, docName),
+              onTap: () => _showDocumentViewer(request, docName, docId),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(

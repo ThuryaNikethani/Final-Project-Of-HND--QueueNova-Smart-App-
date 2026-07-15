@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:html' as html;
+import 'package:easy_localization/easy_localization.dart';
+import 'web_api_service.dart';
 
 class WebPaymentReports extends StatefulWidget {
   const WebPaymentReports({super.key});
@@ -12,33 +14,65 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
   String selectedPeriod = 'This Month';
   final List<String> periods = ['Today', 'This Week', 'This Month', 'This Year'];
 
-  int totalCollections = 12500;
-  int pendingPayments = 4500;
-  int completedPayments = 8000;
-  double collectionRate = 64.0;
+  bool _loading = true;
+  List<Map<String, dynamic>> transactions = [];
+  List<Map<String, dynamic>> paymentMethods = [];
+  List<Map<String, dynamic>> topServices = [];
 
-  List<Map<String, dynamic>> transactions = [
-    {'id': 'TXN001', 'citizen': 'K.N.T. Nikethani', 'service': 'Passport Renewal', 'amount': 5000, 'date': '2026-05-25', 'status': 'paid', 'method': 'Pay Online'},
-    {'id': 'TXN002', 'citizen': 'Saman Perera', 'service': 'NIC Card', 'amount': 500, 'date': '2026-05-24', 'status': 'paid', 'method': 'Pay at Counter'},
-    {'id': 'TXN003', 'citizen': 'Mala Kumari', 'service': 'Driving License', 'amount': 3000, 'date': '2026-05-23', 'status': 'pending', 'method': 'Pay Online'},
-    {'id': 'TXN004', 'citizen': 'Ruwan Jaya', 'service': 'Birth Certificate', 'amount': 200, 'date': '2026-05-22', 'status': 'paid', 'method': 'Pay at Counter'},
-    {'id': 'TXN005', 'citizen': 'Nimal Silva', 'service': 'Police Clearance', 'amount': 1000, 'date': '2026-05-21', 'status': 'pending', 'method': 'Pay Online'},
-    {'id': 'TXN006', 'citizen': 'Kamal Perera', 'service': 'Passport Renewal', 'amount': 5000, 'date': '2026-05-20', 'status': 'paid', 'method': 'Pay Online'},
-    {'id': 'TXN007', 'citizen': 'Sunil Jaya', 'service': 'Driving License', 'amount': 3000, 'date': '2026-05-19', 'status': 'paid', 'method': 'Pay at Counter'},
-  ];
-
-  List<Map<String, dynamic>> get filteredTransactions {
-    final now = DateTime.now();
-    if (selectedPeriod == 'Today') {
-      return transactions.where((t) => t['date'] == now.toString().substring(0, 10)).toList();
-    } else if (selectedPeriod == 'This Week') {
-      return transactions;
-    } else if (selectedPeriod == 'This Month') {
-      return transactions;
-    } else {
-      return transactions;
+  int _periodToDays(String period) {
+    switch (period) {
+      case 'Today': return 1;
+      case 'This Week': return 7;
+      case 'This Month': return 30;
+      case 'This Year': return 365;
+      default: return 30;
     }
   }
+
+  num? _asNum(dynamic v) => v == null ? null : num.tryParse(v.toString());
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPaymentReports();
+  }
+
+  Future<void> _loadPaymentReports() async {
+    setState(() => _loading = true);
+    final data = await WebApiService.getPaymentReports(days: _periodToDays(selectedPeriod));
+    if (!mounted) return;
+    setState(() {
+      transactions = ((data['transactions'] as List?) ?? []).cast<Map<String, dynamic>>().map((t) {
+        return {
+          'id': t['id']?.toString() ?? '',
+          'citizen': t['citizen_name']?.toString() ?? '',
+          'service': t['service']?.toString() ?? '',
+          'amount': _asNum(t['fee_amount'])?.round() ?? 0,
+          'date': t['date']?.toString().substring(0, 10) ?? '',
+          'status': t['payment_status']?.toString() ?? 'pending',
+          'method': t['payment_method']?.toString() ?? '',
+        };
+      }).toList();
+      paymentMethods = ((data['byMethod'] as List?) ?? []).cast<Map<String, dynamic>>().map((m) {
+        return {
+          'method': m['payment_method']?.toString() ?? '',
+          'amount': _asNum(m['total'])?.round() ?? 0,
+          'count': _asNum(m['count'])?.toInt() ?? 0,
+        };
+      }).toList();
+      topServices = ((data['byService'] as List?) ?? []).cast<Map<String, dynamic>>().map((s) {
+        return {
+          'service': s['service']?.toString() ?? '',
+          'amount': _asNum(s['total'])?.round() ?? 0,
+          'count': _asNum(s['count'])?.toInt() ?? 0,
+        };
+      }).toList();
+      _loading = false;
+    });
+  }
+
+  // Already scoped to the selected period by the backend query.
+  List<Map<String, dynamic>> get filteredTransactions => transactions;
 
   void _exportReport() {
     // Build CSV content
@@ -73,7 +107,119 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
     html.Url.revokeObjectUrl(url);
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Report exported successfully!'), backgroundColor: Colors.green),
+      SnackBar(content: Text('web_report_exported_success'.tr()), backgroundColor: Colors.green),
+    );
+  }
+
+  String _periodLabel(String period) {
+    switch (period) {
+      case 'Today': return 'web_period_today'.tr();
+      case 'This Week': return 'web_period_this_week'.tr();
+      case 'This Month': return 'web_period_this_month'.tr();
+      case 'This Year': return 'web_period_this_year'.tr();
+      default: return period;
+    }
+  }
+
+  String _methodLabel(String method) {
+    switch (method) {
+      case 'Pay Online': return 'web_pay_online'.tr();
+      case 'Pay at Counter': return 'web_pay_at_counter'.tr();
+      default: return method;
+    }
+  }
+
+  void _showTransactionListDialog(String title, List<Map<String, dynamic>> txns) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title),
+        content: SizedBox(
+          width: 480,
+          child: txns.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('web_no_data_yet'.tr(), style: const TextStyle(color: Colors.grey)),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 400),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: txns.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final t = txns[index];
+                      final isPaid = t['status'] == 'paid';
+                      return ListTile(
+                        dense: true,
+                        title: Text('${t['citizen']} — ${t['service']}'),
+                        subtitle: Text('${t['id']} • ${t['date']} • ${_methodLabel(t['method'] as String)}'),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Rs. ${t['amount']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text(
+                              (isPaid ? 'web_paid' : 'pending').tr().toUpperCase(),
+                              style: TextStyle(fontSize: 10, color: isPaid ? Colors.green : Colors.orange, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('close'.tr()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCollectionRateDetails(double total, double pending, double paid, String rate) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('web_collection_rate'.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSummaryRow('web_total_collections'.tr(), 'Rs. ${total.toStringAsFixed(0)}'),
+            const Divider(),
+            _buildSummaryRow('web_completed_payments'.tr(), 'Rs. ${paid.toStringAsFixed(0)}'),
+            const Divider(),
+            _buildSummaryRow('web_pending_payments'.tr(), 'Rs. ${pending.toStringAsFixed(0)}'),
+            const Divider(),
+            _buildSummaryRow('web_collection_rate'.tr(), '$rate%'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('close'.tr()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 
@@ -88,7 +234,7 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Payment Reports', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text('web_menu_payment_reports'.tr(), style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black87,
@@ -108,9 +254,9 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text('Manager', style: TextStyle(fontWeight: FontWeight.w600)),
-                    Text('Department Manager', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  children: [
+                    Text('web_manager_label'.tr(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('web_role_department_manager'.tr(), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   ],
                 ),
               ],
@@ -118,7 +264,9 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
           ),
         ],
       ),
-      body: SingleChildScrollView(  // ← FIX: Added SingleChildScrollView to prevent overflow
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(  // ← FIX: Added SingleChildScrollView to prevent overflow
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,8 +284,11 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: selectedPeriod,
-                      items: periods.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                      onChanged: (v) => setState(() => selectedPeriod = v!),
+                      items: periods.map((p) => DropdownMenuItem(value: p, child: Text(_periodLabel(p)))).toList(),
+                      onChanged: (v) {
+                        setState(() => selectedPeriod = v!);
+                        _loadPaymentReports();
+                      },
                     ),
                   ),
                 ),
@@ -145,7 +296,7 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                 ElevatedButton.icon(
                   onPressed: _exportReport,
                   icon: const Icon(Icons.download),
-                  label: const Text('Export Report'),
+                  label: Text('web_export_report_button'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A56DB),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -160,10 +311,22 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                _buildSummaryCard('Total Collections', 'Rs. $total', '+12%', Icons.account_balance_wallet, Colors.blue),
-                _buildSummaryCard('Pending Payments', 'Rs. $pending', '+5%', Icons.pending, Colors.orange),
-                _buildSummaryCard('Completed Payments', 'Rs. $paid', '+15%', Icons.check_circle, Colors.green),
-                _buildSummaryCard('Collection Rate', '$rate%', '+8%', Icons.percent, Colors.purple),
+                _buildSummaryCard(
+                  'web_total_collections'.tr(), 'Rs. ${total.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.blue,
+                  onTap: () => _showTransactionListDialog('web_total_collections'.tr(), filtered),
+                ),
+                _buildSummaryCard(
+                  'web_pending_payments'.tr(), 'Rs. ${pending.toStringAsFixed(0)}', Icons.pending, Colors.orange,
+                  onTap: () => _showTransactionListDialog('web_pending_payments'.tr(), filtered.where((t) => t['status'] == 'pending').toList()),
+                ),
+                _buildSummaryCard(
+                  'web_completed_payments'.tr(), 'Rs. ${paid.toStringAsFixed(0)}', Icons.check_circle, Colors.green,
+                  onTap: () => _showTransactionListDialog('web_completed_payments'.tr(), filtered.where((t) => t['status'] == 'paid').toList()),
+                ),
+                _buildSummaryCard(
+                  'web_collection_rate'.tr(), '$rate%', Icons.percent, Colors.purple,
+                  onTap: () => _showCollectionRateDetails(total, pending, paid, rate),
+                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -182,11 +345,23 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                     ),
                     child: Column(
                       children: [
-                        const Text('Payment Methods', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('web_payment_methods_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 16),
-                        _buildPaymentMethodRow('Pay Online', 4500, 5),
-                        const SizedBox(height: 12),
-                        _buildPaymentMethodRow('Pay at Counter', 3500, 4),
+                        if (paymentMethods.isEmpty)
+                          Text('web_no_data_yet'.tr(), style: const TextStyle(color: Colors.grey))
+                        else
+                          for (int i = 0; i < paymentMethods.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 12),
+                            _buildPaymentMethodRow(
+                              paymentMethods[i]['method'] as String,
+                              paymentMethods[i]['amount'] as int,
+                              paymentMethods[i]['count'] as int,
+                              onTap: () => _showTransactionListDialog(
+                                _methodLabel(paymentMethods[i]['method'] as String),
+                                filtered.where((t) => t['method'] == paymentMethods[i]['method']).toList(),
+                              ),
+                            ),
+                          ],
                       ],
                     ),
                   ),
@@ -202,13 +377,23 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                     ),
                     child: Column(
                       children: [
-                        const Text('Top Services by Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('web_top_services_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 16),
-                        _buildServiceRow('Passport Renewal', 10000, 8),
-                        const SizedBox(height: 12),
-                        _buildServiceRow('Driving License', 6000, 5),
-                        const SizedBox(height: 12),
-                        _buildServiceRow('NIC Card', 1000, 2),
+                        if (topServices.isEmpty)
+                          Text('web_no_data_yet'.tr(), style: const TextStyle(color: Colors.grey))
+                        else
+                          for (int i = 0; i < topServices.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 12),
+                            _buildServiceRow(
+                              topServices[i]['service'] as String,
+                              topServices[i]['amount'] as int,
+                              topServices[i]['count'] as int,
+                              onTap: () => _showTransactionListDialog(
+                                topServices[i]['service'] as String,
+                                filtered.where((t) => t['service'] == topServices[i]['service']).toList(),
+                              ),
+                            ),
+                          ],
                       ],
                     ),
                   ),
@@ -227,9 +412,9 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text('Transaction History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text('web_transaction_history_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                   const Divider(height: 1),
                   // Fixed height container with scroll to prevent overflow
@@ -242,14 +427,14 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                         child: DataTable(
                           columnSpacing: 30,
                           headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-                          columns: const [
-                            DataColumn(label: Text('Transaction ID', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Citizen', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Service', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Amount', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Method', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+                          columns: [
+                            DataColumn(label: Text('web_transaction_id_col'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_citizen'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_service'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_amount'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_date'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_method'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('web_col_status'.tr(), style: const TextStyle(fontWeight: FontWeight.bold))),
                           ],
                           rows: filtered.map((txn) {
                             final isPaid = txn['status'] == 'paid';
@@ -265,7 +450,7 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                                   color: const Color(0xFF1A56DB).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(txn['method'], style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB))),
+                                child: Text(_methodLabel(txn['method'] as String), style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB))),
                               )),
                               DataCell(Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -274,7 +459,7 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
-                                  txn['status'].toUpperCase(),
+                                  (isPaid ? 'web_paid' : 'pending').tr().toUpperCase(),
                                   style: TextStyle(color: isPaid ? Colors.green : Colors.orange, fontSize: 11, fontWeight: FontWeight.w500),
                                 ),
                               )),
@@ -296,10 +481,13 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
     );
   }
 
-  Widget _buildSummaryCard(String title, String value, String change, IconData icon, Color color) {
+  Widget _buildSummaryCard(String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
     return SizedBox(
       width: 220,  // Fixed width to prevent overflow
-      child: Container(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -320,9 +508,40 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
                 children: [
                   Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                   Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-                  Text(change, style: TextStyle(fontSize: 10, color: change.startsWith('+') ? Colors.green : Colors.red)),
                 ],
               ),
+            ),
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodRow(String method, int amount, int count, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(method == 'Pay Online' ? Icons.qr_code : Icons.payments, color: const Color(0xFF1A56DB)),
+            const SizedBox(width: 12),
+            Expanded(child: Text(_methodLabel(method))),
+            Text('Rs. $amount', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('web_count_transactions'.tr(args: ['$count']), style: const TextStyle(fontSize: 11)),
             ),
           ],
         ),
@@ -330,56 +549,33 @@ class _WebPaymentReportsState extends State<WebPaymentReports> {
     );
   }
 
-  Widget _buildPaymentMethodRow(String method, int amount, int count) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(method == 'Pay Online' ? Icons.qr_code : Icons.payments, color: const Color(0xFF1A56DB)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(method)),
-          Text('Rs. $amount', style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
+  Widget _buildServiceRow(String service, int amount, int count, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.assignment, color: Color(0xFF1A56DB)),
+            const SizedBox(width: 12),
+            Expanded(child: Text(service)),
+            Text('Rs. $amount', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('web_count_payments'.tr(args: ['$count']), style: const TextStyle(fontSize: 11)),
             ),
-            child: Text('$count transactions', style: const TextStyle(fontSize: 11)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildServiceRow(String service, int amount, int count) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.assignment, color: Color(0xFF1A56DB)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(service)),
-          Text('Rs. $amount', style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text('$count payments', style: const TextStyle(fontSize: 11)),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

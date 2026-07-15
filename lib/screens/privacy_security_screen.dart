@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:open_file/open_file.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
+import 'package:queuenova_mobile/services/push_notification_service.dart';
 import 'package:queuenova_mobile/screens/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -255,55 +259,119 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
   }
 
   void _changePassword() {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    bool isSubmitting = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('change_password'.tr()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'current_password_label'.tr(),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('change_password'.tr()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'current_password_label'.tr(),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: newController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'new_password_label'.tr(),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'confirm_new_password_label'.tr(),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text('cancel'.tr()),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'new_password_label'.tr(),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'confirm_new_password_label'.tr(),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final current = currentController.text;
+                      final newPass = newController.text;
+                      final confirm = confirmController.text;
+                      final messenger = ScaffoldMessenger.of(context);
+
+                      if (current.isEmpty || newPass.isEmpty || confirm.isEmpty) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('fill_all_fields'.tr()), backgroundColor: AppColors.error),
+                        );
+                        return;
+                      }
+                      if (newPass != confirm) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('passwords_do_not_match'.tr()), backgroundColor: AppColors.error),
+                        );
+                        return;
+                      }
+                      if (newPass.length < 6) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('password_too_short'.tr()), backgroundColor: AppColors.error),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSubmitting = true);
+                      final authService = Provider.of<AuthService>(context, listen: false);
+                      final success = await authService.changePassword(
+                        currentPassword: current,
+                        newPassword: newPass,
+                      );
+                      if (!dialogContext.mounted) return;
+                      setDialogState(() => isSubmitting = false);
+
+                      if (success) {
+                        Navigator.pop(dialogContext);
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('password_changed_successfully'.tr()), backgroundColor: AppColors.success),
+                        );
+                      } else {
+                        final message = switch (authService.lastPasswordChangeError) {
+                          'wrong-password' || 'invalid-credential' => 'current_password_incorrect'.tr(),
+                          'weak-password' => 'new_password_too_weak'.tr(),
+                          'requires-recent-login' => 'requires_recent_login'.tr(),
+                          'not_signed_in' => 'must_be_signed_in'.tr(),
+                          _ => 'password_change_failed'.tr(),
+                        };
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(message), backgroundColor: AppColors.error),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text('update_button'.tr()),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('cancel'.tr()),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('password_changed_successfully'.tr()), backgroundColor: AppColors.success),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
-            child: Text('update_button'.tr()),
-          ),
-        ],
       ),
     );
   }
@@ -359,6 +427,13 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               (value) {
                 setState(() => isNotificationEnabled = value);
                 _saveSetting('notifications_enabled', value);
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                if (uid == null) return;
+                if (value) {
+                  PushNotificationService.instance.registerToken(collection: 'users', docId: uid);
+                } else {
+                  PushNotificationService.instance.unregisterToken(collection: 'users', docId: uid);
+                }
               },
             ),
             _buildSwitchTile(
@@ -375,9 +450,22 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               'data_download'.tr(),
               'data_download_desc'.tr(),
               Icons.download_rounded,
-              () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('data_download_submitted'.tr()), backgroundColor: AppColors.success),
+              () async {
+                final authService = Provider.of<AuthService>(context, listen: false);
+                final messenger = ScaffoldMessenger.of(context);
+                final filePath = await authService.exportPersonalDataToDevice();
+                unawaited(authService.submitDataDownloadRequest());
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(filePath != null ? 'data_download_submitted'.tr() : 'data_download_request_failed'.tr()),
+                    backgroundColor: filePath != null ? AppColors.success : AppColors.error,
+                    action: filePath != null
+                        ? SnackBarAction(
+                            label: 'open'.tr(),
+                            onPressed: () => OpenFile.open(filePath),
+                          )
+                        : null,
+                  ),
                 );
               },
             ),

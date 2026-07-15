@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:easy_localization/easy_localization.dart';
+import 'package:easy_localization/easy_localization.dart' hide DateFormat;
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
 
 class EmergencyQueueScreen extends StatefulWidget {
   const EmergencyQueueScreen({super.key});
@@ -14,7 +17,12 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
   String selectedType = 'medical_emergency';
   final TextEditingController descriptionController = TextEditingController();
   bool isSubmitting = false;
-  List<Map<String, dynamic>> myRequests = [];
+
+  String? _myNic;
+  String? _myName;
+  String? _myToken;
+  String? _myOfficeId;
+  bool _loadingPosition = true;
 
   final List<Map<String, dynamic>> types = [
     {
@@ -52,17 +60,28 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRequests();
+    _loadMyQueuePosition();
   }
 
-  Future<void> _loadRequests() async {
+  Future<void> _loadMyQueuePosition() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString('emergency_requests');
-    if (data != null && data.isNotEmpty) {
-      // Parse and load
-    }
+    _myNic = prefs.getString('userNIC');
+    _myName = prefs.getString('userName');
+    final position = await QueueStatusService.getMyQueuePosition(_myNic ?? '');
+    if (!mounted) return;
+    setState(() {
+      _myToken = position['found'] == true ? position['token'] as String? : null;
+      _myOfficeId = position['found'] == true ? position['officeId'] as String? : null;
+      _loadingPosition = false;
+    });
   }
 
+  /// Sends the emergency request to staff via the same `staff_notifications`
+  /// mechanism `queue_tab_screen.dart`'s priority-queue toggle already uses
+  /// (staff resolve it from `web_notifications.dart` `_resolvePriorityRequest`,
+  /// which flips `is_priority` on this citizen's queue entry). Requires an
+  /// active waiting token for the same reason: there's no queue entry to
+  /// prioritise otherwise.
   Future<void> _submitRequest() async {
     if (descriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -74,13 +93,45 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
       return;
     }
 
+    if (_myToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('priority_no_active_token'.tr()),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
     setState(() => isSubmitting = true);
-    await Future.delayed(const Duration(seconds: 1));
 
-    final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('userName') ?? 'Citizen';
+    final name = _myName?.isNotEmpty == true ? _myName! : 'A citizen';
+    final typeLabel = selectedType.tr();
+    bool sent = true;
+    try {
+      await FirebaseFirestore.instance.collection('staff_notifications').add({
+        'title': 'Emergency Queue Request',
+        'message':
+            '$name (token $_myToken) requests emergency priority access at $_myOfficeId: $typeLabel — ${descriptionController.text}',
+        'type': 'priority_request',
+        'action': 'Approve',
+        'targetRoles': const ['queueManager'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'token': _myToken,
+        'officeId': _myOfficeId,
+        'nic': _myNic,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      sent = false;
+    }
 
-    if (mounted) {
+    if (!mounted) return;
+    setState(() => isSubmitting = false);
+
+    if (sent) {
+      descriptionController.clear();
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -95,7 +146,7 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
               const SizedBox(height: 12),
               Text('emergency_received'.tr()),
               const SizedBox(height: 8),
-              Text('proceed_to_counter'.tr(args: [userName]),
+              Text('proceed_to_counter'.tr(args: [name]),
                   style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
@@ -103,17 +154,20 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.pop(context);
               },
               child: Text('ok'.tr()),
             ),
           ],
         ),
       );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('priority_request_failed'.tr()),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating),
+      );
     }
-
-    setState(() => isSubmitting = false);
-    descriptionController.clear();
   }
 
   @override
@@ -168,6 +222,28 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
               ],
             ),
           ),
+          if (!_loadingPosition && _myToken == null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppColors.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'priority_no_active_token'.tr(),
+                      style: const TextStyle(fontSize: 11, color: AppColors.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('select_emergency_type'.tr(),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -275,6 +351,87 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
   }
 
   Widget _buildHistoryTab() {
+    if (_myNic == null || _myNic!.isEmpty) {
+      return _buildEmptyHistory();
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('staff_notifications')
+          .where('nic', isEqualTo: _myNic)
+          .where('type', isEqualTo: 'priority_request')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _buildEmptyHistory();
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            final dismissedBy = (data['dismissedBy'] as List?) ?? const [];
+            final resolved = dismissedBy.isNotEmpty;
+            final createdAt = data['createdAt'] as Timestamp?;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.greyLight, width: 0.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          data['message'] as String? ?? '',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: (resolved ? AppColors.success : AppColors.warning).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          resolved ? 'completed_status'.tr() : 'pending'.tr(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: resolved ? AppColors.success : AppColors.warning,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (createdAt != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      DateFormat('dd MMM yyyy, hh:mm a').format(createdAt.toDate()),
+                      style: TextStyle(fontSize: 10, color: AppColors.grey),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyHistory() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

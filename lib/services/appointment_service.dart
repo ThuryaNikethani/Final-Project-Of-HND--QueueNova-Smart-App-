@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import '../config/backend_config.dart';
 import '../models/appointment_model.dart';
 
@@ -41,23 +43,118 @@ class AppointmentService {
   }
 
   // ── Public API (same interface as before) ────────────────────────────────
+  //
+  // Reads (getAppointments/watchAppointments) are sourced from PostgreSQL
+  // (`/api/web/appointments/search`, matched by NIC) rather than Firestore.
+  //
+  // Reason: this is the same data the officer/staff dashboard already reads
+  // reliably. The Firestore `users/{uid}/appointments` path repeatedly broke
+  // for citizens whose session wasn't a live Firebase Auth uid at booking
+  // time (the offline-login fallback), producing permission-denied errors
+  // and a subcollection that silently never got the write in the first
+  // place — even after fixing the security rules. Postgres has no such
+  // per-uid rules/session dependency, so citizen bookings show up
+  // regardless of the app's current auth state.
+  //
+  // Writes (addAppointment/updateAppointmentStatus/...) are UNCHANGED —
+  // still written to both Firestore and Postgres, exactly as before. Only
+  // where the citizen app *reads* bookings from has moved.
   static Future<List<AppointmentModel>> getAppointments() async {
-    final col = _userCollection();
-    if (col != null) {
+    try {
+      final apts = await _fetchFromPostgres();
+      _appointments = apts;
+      await _saveToLocal();
+      return _appointments;
+    } catch (e) {
+      debugPrint('Postgres getAppointments failed: $e — using local cache');
+      await _loadFromLocal();
+      return _appointments;
+    }
+  }
+
+  /// Uses the server-side NIC-filtered `/appointments/search` endpoint
+  /// (already used elsewhere for citizen lookup) rather than the general
+  /// `/appointments` list, which is capped at the 100 most recent bookings
+  /// system-wide — once the office has more than 100 total appointments, an
+  /// older booking of this citizen's could fall outside that window and
+  /// silently disappear from their own history. Searching by NIC is correct
+  /// regardless of how much data the system has accumulated.
+  static Future<List<AppointmentModel>> _fetchFromPostgres() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nic = (prefs.getString('userNIC') ?? '').toUpperCase();
+    if (nic.isEmpty) return [];
+
+    final res = await http
+        .get(Uri.parse(
+            '${BackendConfig.baseUrl}/api/web/appointments/search?q=${Uri.encodeComponent(nic)}'))
+        .timeout(const Duration(seconds: 8));
+    if (res.statusCode != 200) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+
+    final rows = (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+    // The search endpoint does a substring (ILIKE) match, so re-check for an
+    // exact NIC match client-side to guard against a false-positive partial
+    // match against another citizen's NIC/name.
+    final mine = rows
+        .where((r) => (r['citizen_nic'] as String? ?? '').toUpperCase() == nic)
+        .map(_fromPostgresRow)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return mine;
+  }
+
+  static AppointmentModel _fromPostgresRow(Map<String, dynamic> r) {
+    return AppointmentModel(
+      id: r['id'].toString(),
+      service: r['service'] ?? '',
+      office: r['office'] ?? '',
+      date: DateTime.parse(r['date'] as String),
+      time: r['time'] ?? '',
+      token: r['token'] ?? '',
+      status: r['status'] ?? 'Confirmed',
+      qrData: r['qr_data'] ?? '',
+      paymentStatus: r['payment_status'] ?? 'pending',
+      feeAmount: double.tryParse(r['fee_amount']?.toString() ?? '') ?? 0,
+      paymentMethod: r['payment_method'] ?? '',
+      documents: const [],
+    );
+  }
+
+  /// Live version of [getAppointments]. Re-fetches from Postgres and emits
+  /// whenever the backend broadcasts an appointment change over the same
+  /// Socket.IO connection `QueueStatusService.connect()` already uses for
+  /// queue updates (`server.js` emits `appointment_update` on booking/status
+  /// changes and `payment_confirmed` on payment), so staff-side changes
+  /// still appear instantly without polling.
+  static Stream<List<AppointmentModel>> watchAppointments() {
+    late final StreamController<List<AppointmentModel>> controller;
+    socket_io.Socket? socket;
+
+    Future<void> emitLatest() async {
       try {
-        final snapshot = await col.orderBy('date', descending: true).get();
-        _appointments = snapshot.docs
-            .map((doc) => AppointmentModel.fromJson(_firestoreToJson(doc)))
-            .toList();
-        // Sync cache
-        await _saveToLocal();
-        return _appointments;
+        controller.add(await getAppointments());
       } catch (e) {
-        debugPrint('Firestore getAppointments failed: $e — using local cache');
+        controller.addError(e);
       }
     }
-    await _loadFromLocal();
-    return _appointments;
+
+    controller = StreamController<List<AppointmentModel>>.broadcast(
+      onListen: () {
+        emitLatest();
+        socket = socket_io.io(
+          BackendConfig.baseUrl,
+          socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+        );
+        socket!.on('appointment_update', (_) => emitLatest());
+        socket!.on('payment_confirmed', (_) => emitLatest());
+        socket!.connect();
+      },
+      onCancel: () {
+        socket?.dispose();
+      },
+    );
+    return controller.stream;
   }
 
   static Future<void> addAppointment(AppointmentModel appointment) async {
@@ -66,19 +163,33 @@ class AppointmentService {
     _appointments.add(appointment);
     await _saveToLocal();
 
-    // Push to Firestore (primary citizen store)
+    // Mirror to Firestore too (kept for other tooling that still reads it).
+    // Fire-and-forget, same as the Postgres/document mirrors below — reads
+    // no longer go through Firestore at all (see the class comment above),
+    // so there's no reason for the citizen to wait on this write. It used to
+    // be a blocking `await` with no timeout, which meant that if the write
+    // couldn't reach the server, it would never resolve and never throw —
+    // hanging the "Confirm Appointment" button forever instead of falling
+    // back to the local cache that was already saved above.
     final col = _userCollection();
     if (col != null) {
-      try {
-        await col.doc(appointment.id).set(_toFirestore(appointment));
-      } catch (e) {
+      col
+          .doc(appointment.id)
+          .set(_toFirestore(appointment))
+          .timeout(const Duration(seconds: 8))
+          .catchError((e) {
         debugPrint('Firestore addAppointment failed: $e — kept locally');
-      }
+      });
     }
 
     // Mirror to PostgreSQL so the web dashboard can see citizen bookings.
     // Fire-and-forget — failure never blocks the citizen.
     _mirrorToPostgres(appointment);
+
+    // Mirror any attached documents too, linked via appointmentId, so the
+    // Service Processing / Document Management screens can see them.
+    // Fire-and-forget — failure never blocks the citizen.
+    _mirrorDocumentsToPostgres(appointment);
 
     // Notify reception staff (the role that manages the Appointments screen).
     // Fire-and-forget — failure never blocks the citizen.
@@ -136,6 +247,45 @@ class AppointmentService {
     }).catchError((e) {
       debugPrint('PostgreSQL mirror error: $e — backend may not be running');
     });
+  }
+
+  /// Uploads each document attached during booking to PostgreSQL, linked to
+  /// this appointment's id, so the Service Processing / Document Management
+  /// dashboard screens have something to review. Fire-and-forget — a failed
+  /// upload never blocks the citizen's booking flow.
+  static Future<void> _mirrorDocumentsToPostgres(AppointmentModel a) async {
+    if (a.documents.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final nic  = prefs.getString('userNIC')  ?? '';
+    final name = prefs.getString('userName') ?? '';
+
+    for (final doc in a.documents) {
+      try {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('${BackendConfig.baseUrl}/api/web/documents/upload'),
+        )
+          ..fields['appointmentId'] = a.id
+          ..fields['citizenName'] = name
+          ..fields['citizenNic'] = nic
+          ..fields['documentType'] = doc.documentType
+          ..fields['uploadedBy'] = name;
+        // On Flutter Web there's no real filesystem, so `doc.filePath` isn't
+        // readable there — the picker gives us bytes directly instead, which
+        // work on every platform. Fall back to reading the path only for the
+        // rare case bytes weren't available (native platforms only).
+        final multipartFile = doc.bytes != null
+            ? http.MultipartFile.fromBytes('file', doc.bytes!, filename: doc.fileName)
+            : await http.MultipartFile.fromPath('file', doc.filePath, filename: doc.fileName);
+        request.files.add(multipartFile);
+        final streamed = await request.send();
+        if (streamed.statusCode != 200) {
+          debugPrint('Document mirror failed (${streamed.statusCode}) for ${doc.fileName}');
+        }
+      } catch (e) {
+        debugPrint('Document mirror error for ${doc.fileName}: $e');
+      }
+    }
   }
 
   static Future<void> updateAppointmentStatus(String id, String status) async {
@@ -285,13 +435,4 @@ class AppointmentService {
     };
   }
 
-  static Map<String, dynamic> _firestoreToJson(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
-    // Convert Firestore Timestamp to ISO string expected by fromJson
-    if (data['date'] is Timestamp) {
-      data['date'] = (data['date'] as Timestamp).toDate().toIso8601String();
-    }
-    return data;
-  }
 }

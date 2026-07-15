@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'web_api_service.dart';
 
 class WebUsersManagement extends StatefulWidget {
@@ -89,16 +90,35 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
   }
 
   String _formatLastActive(String? iso) {
-    if (iso == null) return 'Unknown';
+    if (iso == null) return 'web_unknown'.tr();
     try {
       final dt = DateTime.parse(iso).toLocal();
       final diff = DateTime.now().difference(dt);
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-      if (diff.inHours < 24) return '${diff.inHours} hours ago';
-      return '${diff.inDays} days ago';
+      if (diff.inMinutes < 1) return 'web_just_now'.tr();
+      if (diff.inMinutes < 60) return '${diff.inMinutes} ${'web_min_ago'.tr()}';
+      if (diff.inHours < 24) return '${diff.inHours} ${(diff.inHours > 1 ? 'web_hours_ago' : 'web_hour_ago').tr()}';
+      return '${diff.inDays} ${(diff.inDays > 1 ? 'web_days_ago' : 'web_day_ago').tr()}';
     } catch (_) {
-      return 'Unknown';
+      return 'web_unknown'.tr();
+    }
+  }
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'Administrator': return 'web_role_short_admin'.tr();
+      case 'Queue Manager': return 'web_role_short_queue_manager'.tr();
+      case 'Service Officer': return 'web_role_short_service_officer'.tr();
+      case 'Reception': return 'web_role_short_reception'.tr();
+      case 'Department Manager': return 'web_role_short_dept_manager'.tr();
+      default: return role;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'Active': return 'web_active_status'.tr();
+      case 'Offline': return 'web_offline_status'.tr();
+      default: return status;
     }
   }
 
@@ -112,7 +132,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add New User'),
+        title: Text('web_add_new_user_title'.tr()),
         content: SizedBox(
           width: 400,
           child: Column(
@@ -120,28 +140,28 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
             children: [
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person),
+                decoration: InputDecoration(
+                  labelText: 'full_name'.tr(),
+                  prefixIcon: const Icon(Icons.person),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email),
+                decoration: InputDecoration(
+                  labelText: 'web_col_email'.tr(),
+                  prefixIcon: const Icon(Icons.email),
                 ),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedRole,
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  prefixIcon: Icon(Icons.work),
+                decoration: InputDecoration(
+                  labelText: 'web_col_role'.tr(),
+                  prefixIcon: const Icon(Icons.work),
                 ),
                 items: roles.map((role) {
-                  return DropdownMenuItem(value: role, child: Text(role));
+                  return DropdownMenuItem(value: role, child: Text(_roleLabel(role)));
                 }).toList(),
                 onChanged: (value) => selectedRole = value!,
               ),
@@ -149,9 +169,9 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               TextField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Temporary Password',
-                  prefixIcon: Icon(Icons.lock),
+                decoration: InputDecoration(
+                  labelText: 'web_temporary_password'.tr(),
+                  prefixIcon: const Icon(Icons.lock),
                 ),
               ),
             ],
@@ -160,7 +180,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -183,7 +203,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               Navigator.pop(context);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('User added successfully'), backgroundColor: Colors.green),
+                  SnackBar(content: Text('web_user_added_success'.tr()), backgroundColor: Colors.green),
                 );
               }
 
@@ -202,7 +222,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
-            child: const Text('Add User'),
+            child: Text('web_add_user_button'.tr()),
           ),
         ],
       ),
@@ -218,7 +238,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Edit User'),
+        title: Text('web_edit_user_title'.tr()),
         content: SizedBox(
           width: 400,
           child: Column(
@@ -226,28 +246,28 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
             children: [
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person),
+                decoration: InputDecoration(
+                  labelText: 'full_name'.tr(),
+                  prefixIcon: const Icon(Icons.person),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email),
+                decoration: InputDecoration(
+                  labelText: 'web_col_email'.tr(),
+                  prefixIcon: const Icon(Icons.email),
                 ),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedRole,
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  prefixIcon: Icon(Icons.work),
+                decoration: InputDecoration(
+                  labelText: 'web_col_role'.tr(),
+                  prefixIcon: const Icon(Icons.work),
                 ),
                 items: roles.map((role) {
-                  return DropdownMenuItem(value: role, child: Text(role));
+                  return DropdownMenuItem(value: role, child: Text(_roleLabel(role)));
                 }).toList(),
                 onChanged: (value) => selectedRole = value!,
               ),
@@ -257,7 +277,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -275,7 +295,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               Navigator.pop(context);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('User updated successfully'), backgroundColor: Colors.green),
+                  SnackBar(content: Text('web_user_updated_success'.tr()), backgroundColor: Colors.green),
                 );
               }
 
@@ -289,7 +309,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
-            child: const Text('Save Changes'),
+            child: Text('web_save_changes'.tr()),
           ),
         ],
       ),
@@ -301,12 +321,12 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete User'),
-        content: Text('Are you sure you want to delete ${user['name']}?'),
+        title: Text('web_delete_user_title'.tr()),
+        content: Text('web_delete_user_confirm'.tr(args: ['${user['name']}'])),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -315,7 +335,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               Navigator.pop(context);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('User deleted successfully'), backgroundColor: Colors.red),
+                  SnackBar(content: Text('web_user_deleted_success'.tr()), backgroundColor: Colors.red),
                 );
               }
 
@@ -328,7 +348,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text('delete_button'.tr()),
           ),
         ],
       ),
@@ -339,7 +359,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User Management'),
+        title: Text('web_user_management_title'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -348,7 +368,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
             child: ElevatedButton.icon(
               onPressed: _showAddUserDialog,
               icon: const Icon(Icons.add),
-              label: const Text('Add User'),
+              label: Text('web_add_user_button'.tr()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A56DB),
               ),
@@ -370,13 +390,13 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
             scrollDirection: Axis.horizontal,
             child: DataTable(
               columnSpacing: 30,
-              columns: const [
-                DataColumn(label: Text('User')),
-                DataColumn(label: Text('Email')),
-                DataColumn(label: Text('Role')),
-                DataColumn(label: Text('Status')),
-                DataColumn(label: Text('Last Active')),
-                DataColumn(label: Text('Actions')),
+              columns: [
+                DataColumn(label: Text('web_col_user'.tr())),
+                DataColumn(label: Text('web_col_email'.tr())),
+                DataColumn(label: Text('web_col_role'.tr())),
+                DataColumn(label: Text('web_col_status'.tr())),
+                DataColumn(label: Text('web_col_last_active'.tr())),
+                DataColumn(label: Text('web_col_actions'.tr())),
               ],
               rows: users.map((user) {
                 final isActive = user['status'] == 'Active';
@@ -402,7 +422,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
                       color: const Color(0xFF1A56DB).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(user['role'],
+                    child: Text(_roleLabel(user['role'] as String),
                         style: const TextStyle(
                             fontSize: 11, color: Color(0xFF1A56DB))),
                   )),
@@ -415,7 +435,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      user['status'],
+                      _statusLabel(user['status'] as String),
                       style: TextStyle(
                           color: isActive ? Colors.green : Colors.red),
                     ),
@@ -426,13 +446,13 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
                       IconButton(
                         icon: const Icon(Icons.edit, size: 18),
                         onPressed: () => _showEditUserDialog(user),
-                        tooltip: 'Edit',
+                        tooltip: 'edit'.tr(),
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete,
                             size: 18, color: Colors.red),
                         onPressed: () => _deleteUser(user),
-                        tooltip: 'Delete',
+                        tooltip: 'delete_button'.tr(),
                       ),
                     ],
                   )),

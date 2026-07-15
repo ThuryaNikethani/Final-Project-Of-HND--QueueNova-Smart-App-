@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 enum UserRole {
   admin,
@@ -45,7 +46,6 @@ class RolePermissions {
       'dashboard',
       'reception',
       'appointments',
-      'document_management',  // ← ADDED
       'notification_history',
     ],
     UserRole.departmentManager: [
@@ -62,15 +62,15 @@ class RolePermissions {
   static String getRoleName(UserRole role) {
     switch (role) {
       case UserRole.admin:
-        return 'System Administrator';
+        return 'web_role_admin'.tr();
       case UserRole.queueManager:
-        return 'Queue Management Officer';
+        return 'web_role_queue_manager'.tr();
       case UserRole.serviceProcessor:
-        return 'Service Processing Officer';
+        return 'web_role_service_officer'.tr();
       case UserRole.reception:
-        return 'Reception Officer';
+        return 'web_role_reception_officer'.tr();
       case UserRole.departmentManager:
-        return 'Department Manager';
+        return 'web_role_department_manager'.tr();
     }
   }
 

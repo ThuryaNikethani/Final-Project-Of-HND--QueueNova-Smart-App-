@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'web_api_service.dart';
 
 class WebStaffPerformance extends StatefulWidget {
   const WebStaffPerformance({super.key});
@@ -11,19 +13,112 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
   String selectedPeriod = 'This Week';
   final List<String> periods = ['Today', 'This Week', 'This Month', 'This Year'];
 
-  final List<Map<String, dynamic>> staff = [
-    {'name': 'Sarah Johnson', 'role': 'Queue Manager', 'completed': 156, 'avgTime': 4.2, 'satisfaction': 4.8, 'status': 'Online', 'avatar': 'SJ', 'target': 150},
-    {'name': 'Michael Chen', 'role': 'Service Officer', 'completed': 142, 'avgTime': 5.1, 'satisfaction': 4.6, 'status': 'Online', 'avatar': 'MC', 'target': 140},
-    {'name': 'Priya Sharma', 'role': 'Reception', 'completed': 98, 'avgTime': 2.8, 'satisfaction': 4.9, 'status': 'Online', 'avatar': 'PS', 'target': 100},
-    {'name': 'David Kim', 'role': 'Service Officer', 'completed': 87, 'avgTime': 6.3, 'satisfaction': 4.2, 'status': 'Away', 'avatar': 'DK', 'target': 130},
-    {'name': 'Lisa Wong', 'role': 'Queue Manager', 'completed': 76, 'avgTime': 3.9, 'satisfaction': 4.7, 'status': 'Online', 'avatar': 'LW', 'target': 120},
-  ];
+  bool _loading = true;
+  List<Map<String, dynamic>> staff = [];
+
+  int _periodToDays(String period) {
+    switch (period) {
+      case 'Today': return 1;
+      case 'This Week': return 7;
+      case 'This Month': return 30;
+      case 'This Year': return 365;
+      default: return 7;
+    }
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    return name.isNotEmpty ? name.substring(0, 2).toUpperCase() : '—';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPerformance();
+  }
+
+  /// Postgres returns COUNT()/NUMERIC aggregates as JSON strings (to avoid
+  /// bigint precision loss), not numbers, so this must handle both.
+  num? _asNum(dynamic v) => v == null ? null : num.tryParse(v.toString());
+
+  Future<void> _loadPerformance() async {
+    setState(() => _loading = true);
+    final rows = await WebApiService.getStaffPerformance(days: _periodToDays(selectedPeriod));
+    if (!mounted) return;
+    setState(() {
+      staff = rows.map((r) {
+        final name = r['user_name']?.toString() ?? '';
+        return {
+          'name': name,
+          'role': r['role']?.toString() ?? '',
+          'completed': _asNum(r['services_completed'])?.toInt() ?? 0,
+          'target': _asNum(r['target'])?.toInt() ?? 0,
+          'avgTime': _asNum(r['avg_time_minutes'])?.toDouble(),
+          'satisfaction': _asNum(r['avg_satisfaction'])?.toDouble(),
+          'status': r['status']?.toString() ?? 'Away',
+          'avatar': _initials(name),
+        };
+      }).toList();
+      _loading = false;
+    });
+  }
+
+  int get _totalCompleted => staff.fold(0, (sum, m) => sum + (m['completed'] as int));
+
+  int get _totalTarget => staff.fold(0, (sum, m) => sum + (m['target'] as int));
+
+  String get _completionRateLabel {
+    if (_totalTarget == 0) return '—';
+    return '${((_totalCompleted / _totalTarget) * 100).clamp(0, 999).toInt()}%';
+  }
+
+  String get _avgResponseLabel {
+    final withTime = staff.where((m) => m['avgTime'] != null).toList();
+    if (withTime.isEmpty) return '—';
+    final avg = withTime.fold<double>(0, (sum, m) => sum + (m['avgTime'] as double)) / withTime.length;
+    return '${avg.toStringAsFixed(1)}min';
+  }
+
+  String get _avgSatisfactionLabel {
+    final withRating = staff.where((m) => m['satisfaction'] != null).toList();
+    if (withRating.isEmpty) return '—';
+    final avg = withRating.fold<double>(0, (sum, m) => sum + (m['satisfaction'] as double)) / withRating.length;
+    return avg.toStringAsFixed(1);
+  }
+
+  String _periodLabel(String period) {
+    switch (period) {
+      case 'Today': return 'web_period_today'.tr();
+      case 'This Week': return 'web_period_this_week'.tr();
+      case 'This Month': return 'web_period_this_month'.tr();
+      case 'This Year': return 'web_period_this_year'.tr();
+      default: return period;
+    }
+  }
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'Queue Manager': return 'web_role_short_queue_manager'.tr();
+      case 'Service Officer': return 'web_role_short_service_officer'.tr();
+      case 'Reception': return 'web_role_short_reception'.tr();
+      default: return role;
+    }
+  }
+
+  String _onlineStatusLabel(String status) {
+    switch (status) {
+      case 'Online': return 'web_online_status'.tr();
+      case 'Away': return 'web_away_status'.tr();
+      default: return status;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Staff Performance'),
+        title: Text('web_menu_staff_performance'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -42,9 +137,9 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text('Admin', style: TextStyle(fontWeight: FontWeight.w600)),
-                    Text('System Administrator', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  children: [
+                    Text('web_admin_label'.tr(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('web_role_admin'.tr(), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   ],
                 ),
               ],
@@ -52,7 +147,9 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
           ),
         ],
       ),
-      body: Padding(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -68,19 +165,22 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: selectedPeriod,
-                      items: periods.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                      onChanged: (v) => setState(() => selectedPeriod = v!),
+                      items: periods.map((p) => DropdownMenuItem(value: p, child: Text(_periodLabel(p)))).toList(),
+                      onChanged: (v) {
+                        setState(() => selectedPeriod = v!);
+                        _loadPerformance();
+                      },
                     ),
                   ),
                 ),
                 const Spacer(),
-                _buildSummaryCard('Total Services', '559', '+12%', Icons.assignment, Colors.blue),
+                _buildSummaryCard('web_stat_total_services'.tr(), '$_totalCompleted', Icons.assignment, Colors.blue),
                 const SizedBox(width: 16),
-                _buildSummaryCard('Avg. Response', '4.2min', '-0.5', Icons.timer, Colors.green),
+                _buildSummaryCard('web_stat_avg_response'.tr(), _avgResponseLabel, Icons.timer, Colors.green),
                 const SizedBox(width: 16),
-                _buildSummaryCard('Satisfaction', '4.7', '+0.3', Icons.star, Colors.orange),
+                _buildSummaryCard('web_satisfaction_label'.tr(), _avgSatisfactionLabel, Icons.star, Colors.orange),
                 const SizedBox(width: 16),
-                _buildSummaryCard('Completion Rate', '94%', '+2%', Icons.percent, Colors.purple),
+                _buildSummaryCard('web_completion_rate'.tr(), _completionRateLabel, Icons.percent, Colors.purple),
               ],
             ),
             const SizedBox(height: 24),
@@ -94,22 +194,24 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                 ),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.all(16),
                   child: DataTable(
                     columnSpacing: 30,
-                    columns: const [
-                      DataColumn(label: Text('Staff Member')),
-                      DataColumn(label: Text('Role')),
-                      DataColumn(label: Text('Completed')),
-                      DataColumn(label: Text('Target')),
-                      DataColumn(label: Text('Achievement')),
-                      DataColumn(label: Text('Avg. Time')),
-                      DataColumn(label: Text('Satisfaction')),
-                      DataColumn(label: Text('Status')),
-                      DataColumn(label: Text('Performance')),
+                    columns: [
+                      DataColumn(label: Text('web_staff_member_col'.tr())),
+                      DataColumn(label: Text('web_col_role'.tr())),
+                      DataColumn(label: Text('web_completed_col'.tr())),
+                      DataColumn(label: Text('web_target_col'.tr())),
+                      DataColumn(label: Text('web_achievement_col'.tr())),
+                      DataColumn(label: Text('web_avg_time_col'.tr())),
+                      DataColumn(label: Text('web_satisfaction_label'.tr())),
+                      DataColumn(label: Text('web_col_status'.tr())),
+                      DataColumn(label: Text('web_performance_col'.tr())),
                     ],
                     rows: staff.map((member) {
-                      final achievement = (member['completed'] / member['target']).clamp(0.0, 1.0);
-                      final performance = (member['completed'] / 200).clamp(0.0, 1.0);
+                      final target = member['target'] as int;
+                      final achievement = target == 0 ? 0.0 : (member['completed'] as int) / target;
+                      final performance = achievement.clamp(0.0, 1.0);
                       return DataRow(cells: [
                         DataCell(Row(
                           children: [
@@ -128,7 +230,7 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                             color: const Color(0xFF1A56DB).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(member['role'], style: const TextStyle(fontSize: 11)),
+                          child: Text(_roleLabel(member['role'] as String), style: const TextStyle(fontSize: 11)),
                         )),
                         DataCell(Text('${member['completed']}')),
                         DataCell(Text('${member['target']}')),
@@ -136,12 +238,12 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                           color: achievement >= 1.0 ? Colors.green : (achievement >= 0.8 ? Colors.orange : Colors.red),
                           fontWeight: FontWeight.bold,
                         ))),
-                        DataCell(Text('${member['avgTime']} min')),
+                        DataCell(Text(member['avgTime'] != null ? '${(member['avgTime'] as double).toStringAsFixed(1)} min' : '—')),
                         DataCell(Row(
                           children: [
                             const Icon(Icons.star, size: 14, color: Colors.amber),
                             const SizedBox(width: 4),
-                            Text('${member['satisfaction']}'),
+                            Text(member['satisfaction'] != null ? (member['satisfaction'] as double).toStringAsFixed(1) : '—'),
                           ],
                         )),
                         DataCell(Container(
@@ -151,7 +253,7 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            member['status'],
+                            _onlineStatusLabel(member['status'] as String),
                             style: TextStyle(color: member['status'] == 'Online' ? Colors.green : Colors.orange),
                           ),
                         )),
@@ -181,7 +283,7 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
     );
   }
 
-  Widget _buildSummaryCard(String title, String value, String change, IconData icon, Color color) {
+  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -202,7 +304,6 @@ class _WebStaffPerformanceState extends State<WebStaffPerformance> {
             children: [
               Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text(change, style: TextStyle(fontSize: 10, color: change.startsWith('+') ? Colors.green : Colors.red)),
             ],
           ),
         ],

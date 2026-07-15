@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,11 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/queue_status_service.dart';
+import 'package:queuenova_mobile/services/appointment_service.dart';
+import 'package:queuenova_mobile/models/appointment_model.dart';
 import 'package:queuenova_mobile/screens/profile_screen.dart';
 import 'package:queuenova_mobile/screens/bookings_screen.dart';
 import 'package:queuenova_mobile/screens/queue_tab_screen.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
-import 'package:queuenova_mobile/screens/queue_status_screen.dart';
 import 'package:queuenova_mobile/screens/upload_document_screen.dart';
 import 'package:queuenova_mobile/screens/request_tracking_screen.dart';
 import 'package:queuenova_mobile/screens/qr_checkin_screen.dart';
@@ -91,17 +93,55 @@ class _HomeContentState extends State<HomeContent> {
   Map<String, dynamic>? _queuePosition;
   socket_io.Socket? _queueSocket;
 
+  int? _completedServicesCount;
+  double? _avgWaitMinutes;
+  double? _avgRating;
+  List<AppointmentModel> _recentAppointments = [];
+  StreamSubscription<List<AppointmentModel>>? _appointmentsSub;
+
   @override
   void initState() {
     super.initState();
     _loadQueuePosition();
+    _loadStats();
+    _watchAppointments();
     _queueSocket = QueueStatusService.connect(onQueueChanged: _loadQueuePosition);
   }
 
   @override
   void dispose() {
     _queueSocket?.dispose();
+    _appointmentsSub?.cancel();
     super.dispose();
+  }
+
+  // Realtime: re-renders "Recent Appointments" and the "Services" stat the
+  // moment this citizen's appointments change in Firestore (new booking,
+  // staff status update, cancellation) instead of only on screen load.
+  void _watchAppointments() {
+    _appointmentsSub = AppointmentService.watchAppointments().listen((appointments) {
+      if (!mounted) return;
+      setState(() {
+        _completedServicesCount = appointments.where((a) => a.status == 'Completed').length;
+        _recentAppointments = _selectRecentAppointments(appointments);
+      });
+    });
+  }
+
+  // Nearest-first: upcoming (or today's) appointments come first, soonest
+  // first; past appointments follow, most recent first. Plain date-descending
+  // (Firestore's default order) puts the furthest-future appointment on top
+  // instead of whichever one is actually coming up next.
+  List<AppointmentModel> _selectRecentAppointments(List<AppointmentModel> appointments) {
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final sorted = [...appointments]..sort((a, b) {
+      final aUpcoming = !a.date.isBefore(todayStart);
+      final bUpcoming = !b.date.isBefore(todayStart);
+      if (aUpcoming != bUpcoming) return aUpcoming ? -1 : 1;
+      return aUpcoming ? a.date.compareTo(b.date) : b.date.compareTo(a.date);
+    });
+    return sorted.take(3).toList();
   }
 
   Future<void> _loadQueuePosition() async {
@@ -112,10 +152,56 @@ class _HomeContentState extends State<HomeContent> {
     setState(() => _queuePosition = position);
   }
 
+  // Matches BookingsScreen's _getServiceIcon/_getServiceColor convention.
+  IconData _iconForService(String service) {
+    if (service.contains('Passport')) return Icons.airplane_ticket_rounded;
+    if (service.contains('NIC') || service.contains('National')) return Icons.badge_rounded;
+    if (service.contains('Driving')) return Icons.directions_car_rounded;
+    if (service.contains('Birth')) return Icons.celebration_rounded;
+    return Icons.description_rounded;
+  }
+
+  Color _statusColorFor(String status) {
+    switch (status) {
+      case 'Pending': return const Color(0xFFF59E0B);
+      case 'Confirmed': return const Color(0xFF10B981);
+      case 'Completed': return const Color(0xFF6B7280);
+      case 'Cancelled': return AppColors.error;
+      default: return AppColors.grey;
+    }
+  }
+
+  String _statusLabelFor(String status) {
+    switch (status) {
+      case 'Pending': return 'pending'.tr();
+      case 'Confirmed': return 'confirmed'.tr();
+      case 'Completed': return 'completed_status'.tr();
+      case 'Cancelled': return 'cancelled'.tr();
+      default: return status;
+    }
+  }
+
+  Future<void> _loadStats() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nic = prefs.getString('userNIC') ?? '';
+
+    final results = await Future.wait([
+      QueueStatusService.getCitizenAvgWaitMinutes(nic),
+      QueueStatusService.getCitizenAvgRating(nic),
+    ]);
+    if (!mounted) return;
+
+    setState(() {
+      _avgWaitMinutes = results[0];
+      _avgRating = results[1];
+    });
+  }
+
   Widget _buildCurrentTokenCard() {
-    final position = _queuePosition!;
-    final bool isServing = position['status'] == 'serving';
-    final int ahead = position['position'] as int? ?? 0;
+    final position = _queuePosition;
+    final bool hasToken = position?['found'] == true;
+    final bool isServing = position?['status'] == 'serving';
+    final int ahead = position?['position'] as int? ?? 0;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -153,9 +239,9 @@ class _HomeContentState extends State<HomeContent> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  position['token'] as String? ?? '—',
-                  style: const TextStyle(
-                    fontSize: 22,
+                  hasToken ? (position!['token'] as String? ?? '—') : 'no_active_queue_token'.tr(),
+                  style: TextStyle(
+                    fontSize: hasToken ? 22 : 13,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -163,32 +249,33 @@ class _HomeContentState extends State<HomeContent> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  isServing ? '0' : '$ahead',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primaryBlue,
+          if (hasToken)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    isServing ? '0' : '$ahead',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryBlue,
+                    ),
                   ),
-                ),
-                Text(
-                  isServing ? 'now_serving'.tr() : 'ahead'.tr(),
-                  style: const TextStyle(
-                    fontSize: 8,
-                    color: Colors.grey,
+                  Text(
+                    isServing ? 'now_serving'.tr() : 'ahead'.tr(),
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Colors.grey,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -196,7 +283,7 @@ class _HomeContentState extends State<HomeContent> {
 
   final List<Map<String, dynamic>> quickActions = [
     {'titleKey': 'book_appointment', 'subtitleKey': 'schedule_a_service', 'icon': Icons.calendar_month_rounded, 'color': const Color(0xFF1A56DB), 'screen': const BookAppointmentScreen()},
-    {'titleKey': 'queue_status_nav', 'subtitleKey': 'check_your_turn', 'icon': Icons.queue_rounded, 'color': const Color(0xFF10B981), 'screen': const QueueStatusScreen()},
+    {'titleKey': 'queue_status_nav', 'subtitleKey': 'check_your_turn', 'icon': Icons.queue_rounded, 'color': const Color(0xFF10B981), 'screen': const QueueTabScreen()},
     {'titleKey': 'upload_document', 'subtitleKey': 'submit_files', 'icon': Icons.upload_file_rounded, 'color': const Color(0xFFF59E0B), 'screen': const DocumentUploadScreen()},
     {'titleKey': 'track_request', 'subtitleKey': 'view_progress', 'icon': Icons.track_changes_rounded, 'color': const Color(0xFF8B5CF6), 'screen': const RequestTrackingScreen()},
     {'titleKey': 'my_qr_code', 'subtitleKey': 'for_check_in', 'icon': Icons.qr_code_scanner_rounded, 'color': const Color(0xFF06B6D4), 'screen': const QRCheckInScreen()},
@@ -222,6 +309,7 @@ class _HomeContentState extends State<HomeContent> {
             pinned: true,
             backgroundColor: AppColors.primaryBlue,
             flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.pin,
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -357,7 +445,7 @@ class _HomeContentState extends State<HomeContent> {
                           ],
                         ),
                         const Spacer(),
-                        if (_queuePosition?['found'] == true) _buildCurrentTokenCard(),
+                        _buildCurrentTokenCard(),
                       ],
                     ),
                   ),
@@ -555,11 +643,32 @@ class _HomeContentState extends State<HomeContent> {
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
-                  Expanded(child: _buildStatCard(title: 'stat_services'.tr(), value: '12', change: '+2.5%', icon: Icons.assessment_rounded, gradient: const LinearGradient(colors: [Color(0xFF1A56DB), Color(0xFF0E3A9B)]))),
+                  Expanded(
+                    child: _buildStatCard(
+                      title: 'stat_services'.tr(),
+                      value: _completedServicesCount?.toString() ?? '—',
+                      icon: Icons.assessment_rounded,
+                      gradient: const LinearGradient(colors: [Color(0xFF1A56DB), Color(0xFF0E3A9B)]),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildStatCard(title: 'avg_wait'.tr(), value: '24m', change: '-8%', icon: Icons.timer_rounded, gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]))),
+                  Expanded(
+                    child: _buildStatCard(
+                      title: 'avg_wait'.tr(),
+                      value: _avgWaitMinutes != null ? '${_avgWaitMinutes!.round()}m' : '—',
+                      icon: Icons.timer_rounded,
+                      gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildStatCard(title: 'rating'.tr(), value: '4.8', change: '+0.3', icon: Icons.star_rounded, gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]))),
+                  Expanded(
+                    child: _buildStatCard(
+                      title: 'rating'.tr(),
+                      value: _avgRating != null ? _avgRating!.toStringAsFixed(1) : '—',
+                      icon: Icons.star_rounded,
+                      gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -594,32 +703,26 @@ class _HomeContentState extends State<HomeContent> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _buildAppointmentCard(
-                    icon: Icons.airplane_ticket_rounded,
-                    title: 'svc_passport_renewal_name'.tr(),
-                    office: 'office_passport_battaramulla'.tr(),
-                    date: DateFormat('dd MMM yyyy', context.locale.toString()).format(DateTime(2026, 3, 25)),
-                    status: 'pending'.tr(),
-                    statusColor: const Color(0xFFF59E0B),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildAppointmentCard(
-                    icon: Icons.badge_rounded,
-                    title: 'svc_national_id_name'.tr(),
-                    office: 'office_nic_center_colombo'.tr(),
-                    date: DateFormat('dd MMM yyyy', context.locale.toString()).format(DateTime(2026, 3, 28)),
-                    status: 'confirmed'.tr(),
-                    statusColor: const Color(0xFF10B981),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildAppointmentCard(
-                    icon: Icons.directions_car_rounded,
-                    title: 'svc_driving_license_name'.tr(),
-                    office: 'office_rmv_werahera'.tr(),
-                    date: DateFormat('dd MMM yyyy', context.locale.toString()).format(DateTime(2026, 3, 20)),
-                    status: 'completed_status'.tr(),
-                    statusColor: const Color(0xFF6B7280),
-                  ),
+                  if (_recentAppointments.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'book_to_get_started'.tr(),
+                        style: TextStyle(color: AppColors.grey, fontSize: 13),
+                      ),
+                    )
+                  else
+                    for (int i = 0; i < _recentAppointments.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      _buildAppointmentCard(
+                        icon: _iconForService(_recentAppointments[i].service),
+                        title: _recentAppointments[i].service,
+                        office: _recentAppointments[i].office,
+                        date: DateFormat('dd MMM yyyy', context.locale.toString()).format(_recentAppointments[i].date),
+                        status: _statusLabelFor(_recentAppointments[i].status),
+                        statusColor: _statusColorFor(_recentAppointments[i].status),
+                      ),
+                    ],
                 ],
               ),
             ),
@@ -720,7 +823,7 @@ class _HomeContentState extends State<HomeContent> {
   Widget _buildStatCard({
     required String title,
     required String value,
-    required String change,
+    String? change,
     required IconData icon,
     required LinearGradient gradient,
   }) {
@@ -759,10 +862,11 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
               ),
-              Text(
-                change,
-                style: const TextStyle(fontSize: 8, color: Colors.white),
-              ),
+              if (change != null)
+                Text(
+                  change,
+                  style: const TextStyle(fontSize: 8, color: Colors.white),
+                ),
             ],
           ),
           const SizedBox(height: 4),

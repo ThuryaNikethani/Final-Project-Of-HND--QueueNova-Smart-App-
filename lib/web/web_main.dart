@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'package:easy_localization/easy_localization.dart';
+import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/firebase_options.dart';
 import 'web_api_service.dart';
 import 'web_session.dart';
+import 'web_preferences_provider.dart';
 import 'web_login.dart';
 import 'web_account_deletion_requests.dart';
 import 'web_notification_delivery_log.dart';
@@ -32,8 +36,24 @@ import 'web_payment_reports.dart';
 import 'web_role_model.dart';
 import 'web_settings_screen.dart';
 
+/// Maps the Settings screen's 'selectedLanguage' preference value to an
+/// easy_localization locale code.
+String? _languageCodeFor(String? name) {
+  switch (name) {
+    case 'Sinhala':
+      return 'si';
+    case 'Tamil':
+      return 'ta';
+    case 'English':
+      return 'en';
+    default:
+      return null;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // The dashboard has its own demo login (web_login.dart) and doesn't
   // otherwise use Firebase Auth — sign in anonymously purely so Firestore
@@ -53,7 +73,33 @@ void main() async {
   // Logout button should do that.
   final restoredSession = await WebSession.load();
   debugPrint('[main] startup restoredSession = $restoredSession');
-  runApp(WebQueueNovaApp(restoredSession: restoredSession));
+
+  // Seed theme/font/language from the officer's saved preferences (if any)
+  // before the first frame, so returning users don't see a flash of the
+  // default English/Light look before Settings loads.
+  final preferencesProvider = WebPreferencesProvider();
+  Locale startLocale = const Locale('en');
+  final staffId = int.tryParse(restoredSession?['staffId'] as String? ?? '');
+  if (staffId != null) {
+    final prefs = await WebApiService.getUserPreferences(staffId);
+    preferencesProvider.setThemeModeByName(prefs['selectedTheme'] as String? ?? '');
+    preferencesProvider.setFontScaleByName(prefs['selectedFontSize'] as String? ?? '');
+    final code = _languageCodeFor(prefs['selectedLanguage'] as String?);
+    if (code != null) startLocale = Locale(code);
+  }
+
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [Locale('en'), Locale('si'), Locale('ta')],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en'),
+      startLocale: startLocale,
+      child: ChangeNotifierProvider.value(
+        value: preferencesProvider,
+        child: WebQueueNovaApp(restoredSession: restoredSession),
+      ),
+    ),
+  );
 }
 
 class WebQueueNovaApp extends StatelessWidget {
@@ -168,6 +214,109 @@ class WebQueueNovaApp extends StatelessWidget {
           space: 16,
         ),
       ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF3B82F6),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        fontFamily: 'Roboto',
+        useMaterial3: true,
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF3B82F6),
+          secondary: Color(0xFF9F7AEA),
+          tertiary: Color(0xFF22D3EE),
+          surface: Color(0xFF1E293B),
+          error: Color(0xFFEF4444),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Color(0xFFE5E7EB)),
+          titleTextStyle: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFE5E7EB),
+            letterSpacing: 0.5,
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF1E293B),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF334155), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF334155), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
+          ),
+          hintStyle: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+          ),
+          labelStyle: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF3B82F6),
+            foregroundColor: Colors.white,
+            elevation: 2,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF3B82F6),
+            side: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFF334155), width: 1),
+          ),
+          color: const Color(0xFF1E293B),
+          margin: EdgeInsets.zero,
+        ),
+        dividerTheme: const DividerThemeData(
+          color: Color(0xFF334155),
+          thickness: 1,
+          space: 16,
+        ),
+      ),
+      themeMode: context.watch<WebPreferencesProvider>().themeMode,
+      locale: context.locale,
+      supportedLocales: context.supportedLocales,
+      localizationsDelegates: context.localizationDelegates,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: TextScaler.linear(context.watch<WebPreferencesProvider>().fontScale),
+        ),
+        child: child!,
+      ),
       home: initialScreen,
       routes: {
         '/login': (context) => const WebLogin(),
@@ -197,128 +346,178 @@ class WebDashboard extends StatefulWidget {
 class _WebDashboardState extends State<WebDashboard> {
   int _selectedIndex = 0;
   List<Map<String, dynamic>> _menuItems = [];
+  String? _photoBase64;
+
+  // Security Settings → Session Security: auto-logout after N idle minutes,
+  // enforced here (the one persistent shell every screen lives inside)
+  // rather than in any individual page.
+  Timer? _idleTimer;
+  bool _sessionTimeoutEnabled = true;
+  int _sessionTimeoutMinutes = 30;
 
   @override
   void initState() {
     super.initState();
     _updateMenuItems();
+    _loadPhoto();
+    _loadSessionTimeoutSettings();
+  }
+
+  Future<void> _loadSessionTimeoutSettings() async {
+    final res = await WebApiService.getSecuritySettings();
+    final settings = res?['settings'] as Map<String, dynamic>?;
+    if (!mounted) return;
+    _sessionTimeoutEnabled = settings?['enableSessionTimeout'] as bool? ?? true;
+    _sessionTimeoutMinutes = settings?['sessionTimeoutMinutes'] as int? ?? 30;
+    _resetIdleTimer();
+  }
+
+  void _resetIdleTimer() {
+    _idleTimer?.cancel();
+    if (!_sessionTimeoutEnabled) return;
+    _idleTimer = Timer(Duration(minutes: _sessionTimeoutMinutes), _handleIdleTimeout);
+  }
+
+  Future<void> _handleIdleTimeout() async {
+    if (!mounted) return;
+    await WebSession.clear();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const WebLogin()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadPhoto() async {
+    final id = int.tryParse(widget.userId);
+    if (id == null) return;
+    final users = await WebApiService.getUsers();
+    final match = users.firstWhere((u) => u['id'] == id, orElse: () => {});
+    if (!mounted || match.isEmpty) return;
+    setState(() => _photoBase64 = match['photo_url'] as String?);
   }
 
   void _updateMenuItems() {
     final permissions = RolePermissions.permissions[widget.userRole] ?? [];
     final allItems = [
       {
-        'widget': DashboardHome(userRole: widget.userRole, staffId: widget.userId, userName: widget.userName),
+        'widget': DashboardHome(userRole: widget.userRole, staffId: widget.userId, userName: widget.userName, onPhotoChanged: _loadPhoto),
         'permission': 'dashboard',
-        'label': 'Dashboard',
+        'label': 'web_menu_dashboard',
         'icon': Icons.dashboard
       },
       {
         'widget': const WebQueueManagement(),
         'permission': 'queue_management',
-        'label': 'Queue Management',
+        'label': 'web_menu_queue_management',
         'icon': Icons.queue
       },
       {
         'widget': const WebServiceProcessing(),
         'permission': 'service_processing',
-        'label': 'Service Processing',
+        'label': 'web_menu_service_processing',
         'icon': Icons.assignment
       },
       {
-        'widget': const WebReception(),
+        'widget': WebReception(userRole: widget.userRole, staffId: widget.userId),
         'permission': 'reception',
-        'label': 'Reception',
+        'label': 'web_menu_reception',
         'icon': Icons.qr_code_scanner
       },
       {
         'widget': const WebDocumentManagement(),
         'permission': 'document_management',
-        'label': 'Documents',
+        'label': 'web_menu_documents',
         'icon': Icons.description
       },
       {
         'widget': WebAccountDeletionRequests(officerName: widget.userName),
         'permission': 'account_deletion_requests',
-        'label': 'Account Deletion Requests',
+        'label': 'web_menu_account_deletion_requests',
         'icon': Icons.person_remove
       },
       {
         'widget': const WebNotificationDeliveryLog(),
         'permission': 'notification_delivery_log',
-        'label': 'Notification Delivery Log',
+        'label': 'web_menu_notification_delivery_log',
         'icon': Icons.mark_email_read
       },
       {
         'widget': WebNotifications(userRole: widget.userRole, staffId: widget.userId),
         'permission': 'notification_history',
-        'label': 'Notification History',
+        'label': 'web_menu_notification_history',
         'icon': Icons.history_toggle_off
       },
       {
-        'widget': const WebAppointments(),
+        'widget': WebAppointments(userRole: widget.userRole, staffId: widget.userId),
         'permission': 'appointments',
-        'label': 'Appointments',
+        'label': 'web_menu_appointments',
         'icon': Icons.calendar_today
       },
       {
         'widget': const WebUsersManagement(),
         'permission': 'user_management',
-        'label': 'Users',
+        'label': 'web_menu_users',
         'icon': Icons.people
       },
       {
         'widget': const WebAnalytics(),
         'permission': 'analytics',
-        'label': 'Analytics',
+        'label': 'web_menu_analytics',
         'icon': Icons.analytics
       },
       {
         'widget': const WebReports(),
         'permission': 'reports',
-        'label': 'Reports',
+        'label': 'web_menu_reports',
         'icon': Icons.receipt
       },
       {
         'widget': const WebSystemSettings(),
         'permission': 'system_settings',
-        'label': 'System Settings',
+        'label': 'web_menu_system_settings',
         'icon': Icons.settings
       },
       {
         'widget': const WebStaffPerformance(),
         'permission': 'staff_performance',
-        'label': 'Staff Performance',
+        'label': 'web_menu_staff_performance',
         'icon': Icons.people_outline
       },
       {
         'widget': const WebSecuritySettings(),
         'permission': 'security_settings',
-        'label': 'Security',
+        'label': 'web_menu_security',
         'icon': Icons.security
       },
       {
         'widget': const WebBackupRestore(),
         'permission': 'backup_restore',
-        'label': 'Backup & Restore',
+        'label': 'web_menu_backup_restore',
         'icon': Icons.backup
       },
       {
         'widget': const WebAuditLogs(),
         'permission': 'audit_logs',
-        'label': 'Audit Logs',
+        'label': 'web_menu_audit_logs',
         'icon': Icons.history
       },
       {
         'widget': const WebSystemHealth(),
         'permission': 'system_health',
-        'label': 'System Health',
+        'label': 'web_menu_system_health',
         'icon': Icons.health_and_safety
       },
       {
         'widget': const WebPaymentReports(),
         'permission': 'payment_reports',
-        'label': 'Payment Reports',
+        'label': 'web_menu_payment_reports',
         'icon': Icons.payment
       },
     ];
@@ -331,9 +530,9 @@ class _WebDashboardState extends State<WebDashboard> {
   @override
   Widget build(BuildContext context) {
     if (_menuItems.isEmpty) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
-          child: Text('No permissions assigned for this role'),
+          child: Text('web_no_permissions'.tr()),
         ),
       );
     }
@@ -344,37 +543,42 @@ class _WebDashboardState extends State<WebDashboard> {
       _selectedIndex = 0;
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFF5F7FA),
-              const Color(0xFFF5F7FA).withOpacity(0.95),
+    return Listener(
+      onPointerDown: (_) => _resetIdleTimer(),
+      onPointerSignal: (_) => _resetIdleTimer(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFFF5F7FA),
+                const Color(0xFFF5F7FA).withOpacity(0.95),
+              ],
+            ),
+          ),
+          child: Row(
+            children: [
+              WebSidebar(
+                selectedIndex: _selectedIndex,
+                onItemSelected: (index) {
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                },
+                userRole: widget.userRole,
+                userName: widget.userName,
+                userEmail: widget.userEmail,
+                photoBase64: _photoBase64,
+                menuItems: _menuItems,
+              ),
+              Expanded(
+                child: pages[_selectedIndex],
+              ),
             ],
           ),
-        ),
-        child: Row(
-          children: [
-            WebSidebar(
-              selectedIndex: _selectedIndex,
-              onItemSelected: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              userRole: widget.userRole,
-              userName: widget.userName,
-              userEmail: widget.userEmail,
-              menuItems: _menuItems,
-            ),
-            Expanded(
-              child: pages[_selectedIndex],
-            ),
-          ],
         ),
       ),
     );
@@ -385,8 +589,9 @@ class DashboardHome extends StatefulWidget {
   final UserRole userRole;
   final String staffId;
   final String userName;
+  final VoidCallback? onPhotoChanged;
 
-  const DashboardHome({super.key, required this.userRole, required this.staffId, required this.userName});
+  const DashboardHome({super.key, required this.userRole, required this.staffId, required this.userName, this.onPhotoChanged});
 
   @override
   State<DashboardHome> createState() => _DashboardHomeState();
@@ -396,6 +601,7 @@ class _DashboardHomeState extends State<DashboardHome> {
   int _notificationCount = 0;
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<QuerySnapshot>? _notifSub;
+  String? _photoBase64;
 
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _activity = [];
@@ -407,6 +613,7 @@ class _DashboardHomeState extends State<DashboardHome> {
   @override
   void initState() {
     super.initState();
+    _loadPhoto();
     // Sorted client-side (rather than orderBy in the query) to avoid needing
     // a Firestore composite index for an arrayContains + orderBy combination.
     _notifSub = FirebaseFirestore.instance
@@ -472,7 +679,26 @@ class _DashboardHomeState extends State<DashboardHome> {
       final count = (data as Map)['count'] as int?;
       if (count != null) setState(() => _liveActiveUsers = count);
     });
+    // Security Settings → "Limit Concurrent Sessions": the server evicts
+    // this session's socket when a newer login exceeds the configured max.
+    _socket!.on('session_kicked', (_) async {
+      await WebSession.clear();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const WebLogin()),
+        (route) => false,
+      );
+    });
     _socket!.connect();
+  }
+
+  Future<void> _loadPhoto() async {
+    final id = int.tryParse(widget.staffId);
+    if (id == null) return;
+    final users = await WebApiService.getUsers();
+    final match = users.firstWhere((u) => u['id'] == id, orElse: () => {});
+    if (!mounted || match.isEmpty) return;
+    setState(() => _photoBase64 = match['photo_url'] as String?);
   }
 
   Future<void> _loadDashboardData() async {
@@ -500,52 +726,56 @@ class _DashboardHomeState extends State<DashboardHome> {
     final time = _relativeTime((log['created_at'] as String?) != null ? DateTime.tryParse(log['created_at'] as String) : null);
     switch (action) {
       case 'add_queue':
-        return ('User checked in', time, Icons.qr_code);
+        return ('web_activity_checkin'.tr(), time, Icons.qr_code);
       case 'call_next':
-        return ('Token called', time, Icons.notifications);
+        return ('web_activity_token_called'.tr(), time, Icons.notifications);
       case 'book_appointment':
-        return ('New appointment booked', time, Icons.calendar_today);
+        return ('web_activity_appointment_booked'.tr(), time, Icons.calendar_today);
       case 'upload_document':
-        return ('Document uploaded', time, Icons.upload_file);
+        return ('web_activity_document_uploaded'.tr(), time, Icons.upload_file);
       case 'complete_service':
-        return ('Service completed', time, Icons.check_circle);
+        return ('web_activity_service_completed'.tr(), time, Icons.check_circle);
       case 'approve_document':
-        return ('Document approved', time, Icons.check_circle);
+        return ('web_activity_document_approved'.tr(), time, Icons.check_circle);
       case 'reject_document':
-        return ('Document rejected', time, Icons.cancel);
+        return ('web_activity_document_rejected'.tr(), time, Icons.cancel);
       case 'submit_feedback':
-        return ('Feedback submitted', time, Icons.star);
+        return ('web_activity_feedback_submitted'.tr(), time, Icons.star);
       case 'login':
-        return ('Staff login', time, Icons.login);
+        return ('web_activity_staff_login'.tr(), time, Icons.login);
       case 'reassign_counter':
-        return ('Counter reassigned', time, Icons.swap_horiz);
+        return ('web_activity_counter_reassigned'.tr(), time, Icons.swap_horiz);
       case 'process_emergency':
-        return ('Emergency token processed', time, Icons.warning_rounded);
+        return ('web_activity_emergency_processed'.tr(), time, Icons.warning_rounded);
       case 'add_emergency':
-        return ('Emergency added to queue', time, Icons.priority_high);
+        return ('web_activity_emergency_added'.tr(), time, Icons.priority_high);
       case 'cancel_queue':
-        return ('Queue token cancelled', time, Icons.cancel_outlined);
+        return ('web_activity_queue_cancelled'.tr(), time, Icons.cancel_outlined);
       case 'create_user':
-        return ('Staff account created', time, Icons.person_add);
+        return ('web_activity_user_created'.tr(), time, Icons.person_add);
       case 'update_user':
-        return ('Staff account updated', time, Icons.edit);
+        return ('web_activity_user_updated'.tr(), time, Icons.edit);
       case 'delete_user':
-        return ('Staff account deleted', time, Icons.person_remove);
+        return ('web_activity_user_deleted'.tr(), time, Icons.person_remove);
       case 'update_user_status':
-        return ('Staff status updated', time, Icons.toggle_on);
+        return ('web_activity_user_status_updated'.tr(), time, Icons.toggle_on);
       case 'change_password':
-        return ('Password changed', time, Icons.lock_reset);
+        return ('web_activity_password_changed'.tr(), time, Icons.lock_reset);
       case 'update_office_settings':
-        return ('Office settings updated', time, Icons.settings);
+        return ('web_activity_office_settings_updated'.tr(), time, Icons.settings);
+      case 'share_document':
+        return ('web_activity_document_shared'.tr(), time, Icons.share);
+      case 'update_appointment_status':
+        return ('web_activity_appointment_status_updated'.tr(), time, Icons.event_available);
       default:
-        return (action.isEmpty ? 'Activity' : action.replaceAll('_', ' '), time, Icons.info_outline);
+        return (action.isEmpty ? 'web_activity_generic'.tr() : action.replaceAll('_', ' '), time, Icons.info_outline);
     }
   }
 
   List<Widget> _buildActivityWidgets({required bool withGaps}) {
     if (_activity.isEmpty) {
-      return const [
-        Text('No recent activity yet', style: TextStyle(color: Colors.grey, fontSize: 13)),
+      return [
+        Text('web_no_recent_activity'.tr(), style: const TextStyle(color: Colors.grey, fontSize: 13)),
       ];
     }
     final items = _activity.take(5).map(_activityDisplay).toList();
@@ -560,13 +790,13 @@ class _DashboardHomeState extends State<DashboardHome> {
 
   List<Widget> _buildQuickStatWidgets() {
     return [
-      _buildQuickStat("Today's Check-ins", _statValue('todaysCheckIns'), Icons.qr_code_scanner, Colors.blue),
+      _buildQuickStat('web_quickstat_todays_checkins'.tr(), _statValue('todaysCheckIns'), Icons.qr_code_scanner, Colors.blue),
       const SizedBox(height: 12),
-      _buildQuickStat('Pending Approvals', '$_pendingApprovals', Icons.pending, Colors.orange),
+      _buildQuickStat('web_quickstat_pending_approvals'.tr(), '$_pendingApprovals', Icons.pending, Colors.orange),
       const SizedBox(height: 12),
-      _buildQuickStat('Completed Services', _statValue('completedServices'), Icons.check_circle, Colors.green),
+      _buildQuickStat('web_quickstat_completed_services'.tr(), _statValue('completedServices'), Icons.check_circle, Colors.green),
       const SizedBox(height: 12),
-      _buildQuickStat('Active Users', _liveActiveUsers != null ? '$_liveActiveUsers' : _statValue('activeUsers'), Icons.people, Colors.purple),
+      _buildQuickStat('web_quickstat_active_users'.tr(), _liveActiveUsers != null ? '$_liveActiveUsers' : _statValue('activeUsers'), Icons.people, Colors.purple),
     ];
   }
 
@@ -597,10 +827,10 @@ class _DashboardHomeState extends State<DashboardHome> {
   String _relativeTime(DateTime? time) {
     if (time == null) return '—';
     final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
-    if (diff.inDays < 7) return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+    if (diff.inMinutes < 1) return 'web_just_now'.tr();
+    if (diff.inMinutes < 60) return '${diff.inMinutes} ${'web_min_ago'.tr()}';
+    if (diff.inHours < 24) return '${diff.inHours} ${(diff.inHours > 1 ? 'web_hours_ago' : 'web_hour_ago').tr()}';
+    if (diff.inDays < 7) return '${diff.inDays} ${(diff.inDays > 1 ? 'web_days_ago' : 'web_day_ago').tr()}';
     return '${time.day}/${time.month}/${time.year}';
   }
 
@@ -622,14 +852,14 @@ class _DashboardHomeState extends State<DashboardHome> {
     await batch.commit();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All notifications marked as read'), backgroundColor: Colors.green),
+      SnackBar(content: Text('web_all_notifications_marked_read'.tr()), backgroundColor: Colors.green),
     );
   }
 
   Future<void> _addTestNotification() async {
     await FirebaseFirestore.instance.collection('staff_notifications').add({
-      'title': 'Test Notification',
-      'message': 'This is a test notification to verify your settings are working correctly.',
+      'title': 'web_test_notification_title'.tr(),
+      'message': 'web_test_notification_message'.tr(),
       'type': 'system',
       'action': 'View Details',
       'targetRoles': [widget.userRole.name],
@@ -639,11 +869,11 @@ class _DashboardHomeState extends State<DashboardHome> {
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Test notification sent successfully!'),
+      SnackBar(
+        content: Text('web_test_notification_sent'.tr()),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -677,9 +907,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                         children: [
                           const Icon(Icons.notifications, color: Colors.white),
                           const SizedBox(width: 10),
-                          const Text(
-                            'Notifications',
-                            style: TextStyle(
+                          Text(
+                            'notifications'.tr(),
+                            style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold),
@@ -695,23 +925,23 @@ class _DashboardHomeState extends State<DashboardHome> {
                                   }
                                 });
                               },
-                              child: const Text('Mark all read',
-                                  style: TextStyle(color: Colors.white)),
+                              child: Text('web_mark_all_read'.tr(),
+                                  style: const TextStyle(color: Colors.white)),
                             ),
                         ],
                       ),
                     ),
                     Expanded(
                       child: notificationsCopy.isEmpty
-                          ? const Center(
+                          ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.notifications_none,
+                                  const Icon(Icons.notifications_none,
                                       size: 80, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text('No notifications',
-                                      style: TextStyle(color: Colors.grey)),
+                                  const SizedBox(height: 16),
+                                  Text('web_no_notifications'.tr(),
+                                      style: const TextStyle(color: Colors.grey)),
                                 ],
                               ),
                             )
@@ -835,7 +1065,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                                 setDialogState(() {});
                               },
                               icon: const Icon(Icons.send, size: 18),
-                              label: const Text('Send Test Notification'),
+                              label: Text('web_send_test_notification'.tr()),
                               style: OutlinedButton.styleFrom(
                                 side:
                                     const BorderSide(color: Color(0xFF1A56DB)),
@@ -926,34 +1156,34 @@ class _DashboardHomeState extends State<DashboardHome> {
                       ),
                       const SizedBox(height: 20),
                       if (notif['type'] == 'appointment') ...[
-                        const Text('Appointment Details',
-                            style: TextStyle(
+                        Text('web_appointment_details'.tr(),
+                            style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Service', notif['service']),
-                        _buildDetailRow('Office', notif['office']),
-                        _buildDetailRow('Date & Time', notif['datetime']),
-                        _buildDetailRow('Token', notif['token']),
+                        _buildDetailRow('web_detail_service'.tr(), notif['service']),
+                        _buildDetailRow('web_detail_office'.tr(), notif['office']),
+                        _buildDetailRow('web_detail_datetime'.tr(), notif['datetime']),
+                        _buildDetailRow('web_detail_token'.tr(), notif['token']),
                       ],
                       if (notif['type'] == 'queue') ...[
-                        const Text('Queue Details',
-                            style: TextStyle(
+                        Text('web_queue_details'.tr(),
+                            style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Token', notif['token']),
-                        _buildDetailRow('Counter', notif['counter']),
-                        _buildDetailRow('Estimated Wait', notif['waitTime']),
-                        _buildDetailRow('People Ahead', notif['ahead']),
+                        _buildDetailRow('web_detail_token'.tr(), notif['token']),
+                        _buildDetailRow('web_detail_counter'.tr(), notif['counter']),
+                        _buildDetailRow('web_detail_estimated_wait'.tr(), notif['waitTime']),
+                        _buildDetailRow('web_detail_people_ahead'.tr(), notif['ahead']),
                       ],
                       if (notif['type'] == 'document') ...[
-                        const Text('Document Details',
-                            style: TextStyle(
+                        Text('web_document_details'.tr(),
+                            style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Document Name', notif['docName']),
-                        _buildDetailRow('Status', notif['docStatus']),
-                        _buildDetailRow('Uploaded By', notif['uploadedBy']),
-                        _buildDetailRow('Submitted On', notif['submittedOn']),
+                        _buildDetailRow('web_detail_doc_name'.tr(), notif['docName']),
+                        _buildDetailRow('web_detail_status'.tr(), notif['docStatus']),
+                        _buildDetailRow('web_detail_uploaded_by'.tr(), notif['uploadedBy']),
+                        _buildDetailRow('web_detail_submitted_on'.tr(), notif['submittedOn']),
                       ],
                       const SizedBox(height: 24),
                       SizedBox(
@@ -966,13 +1196,13 @@ class _DashboardHomeState extends State<DashboardHome> {
                                 context,
                                 MaterialPageRoute(
                                     builder: (context) =>
-                                        const WebAppointments()),
+                                        WebAppointments(userRole: widget.userRole, staffId: widget.staffId)),
                               );
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                     content: Text(
-                                        '${notif['action']} - Coming Soon'),
+                                        'web_action_coming_soon'.tr(args: [notif['action']])),
                                     backgroundColor: const Color(0xFF1A56DB)),
                               );
                             }
@@ -1068,7 +1298,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: Text('web_menu_dashboard'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -1110,16 +1340,21 @@ class _DashboardHomeState extends State<DashboardHome> {
                   offset: const Offset(0, 45),
                   onSelected: (value) async {
                     if (value == 'profile') {
-                      Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => WebProfile(
                             userRole: userRole,
                             userName: userName,
                             userEmail: userEmail,
+                            staffId: widget.staffId,
                           ),
                         ),
                       );
+                      // Photo may have changed on the profile screen — refresh
+                      // so the app bar avatar reflects it without a full reload.
+                      _loadPhoto();
+                      widget.onPhotoChanged?.call();
                     } else if (value == 'settings') {
                       Navigator.push(
                         context,
@@ -1128,43 +1363,47 @@ class _DashboardHomeState extends State<DashboardHome> {
                             userRole: userRole,
                             userName: userName,
                             userEmail: userEmail,
+                            staffId: widget.staffId,
                           ),
                         ),
                       );
                     } else if (value == 'logout') {
                       await WebSession.clear();
                       if (!context.mounted) return;
-                      Navigator.pushReplacementNamed(context, '/login');
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const WebLogin()),
+                      );
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'profile',
                       child: Row(
                         children: [
-                          Icon(Icons.person, size: 18),
-                          SizedBox(width: 10),
-                          Text('My Profile'),
+                          const Icon(Icons.person, size: 18),
+                          const SizedBox(width: 10),
+                          Text('web_my_profile'.tr()),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'settings',
                       child: Row(
                         children: [
-                          Icon(Icons.settings, size: 18),
-                          SizedBox(width: 10),
-                          Text('Settings'),
+                          const Icon(Icons.settings, size: 18),
+                          const SizedBox(width: 10),
+                          Text('web_settings'.tr()),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'logout',
                       child: Row(
                         children: [
-                          Icon(Icons.logout, size: 18, color: Colors.red),
-                          SizedBox(width: 10),
-                          Text('Logout', style: TextStyle(color: Colors.red)),
+                          const Icon(Icons.logout, size: 18, color: Colors.red),
+                          const SizedBox(width: 10),
+                          Text('logout'.tr(), style: const TextStyle(color: Colors.red)),
                         ],
                       ),
                     ),
@@ -1182,14 +1421,19 @@ class _DashboardHomeState extends State<DashboardHome> {
                         child: CircleAvatar(
                           radius: 18,
                           backgroundColor: Colors.white,
-                          child: Text(
-                            userName.isNotEmpty
-                                ? userName[0].toUpperCase()
-                                : 'A',
-                            style: const TextStyle(
-                                color: Color(0xFF1A56DB),
-                                fontWeight: FontWeight.bold),
-                          ),
+                          backgroundImage: (_photoBase64 != null && _photoBase64!.isNotEmpty)
+                              ? MemoryImage(base64Decode(_photoBase64!))
+                              : null,
+                          child: (_photoBase64 != null && _photoBase64!.isNotEmpty)
+                              ? null
+                              : Text(
+                                  userName.isNotEmpty
+                                      ? userName[0].toUpperCase()
+                                      : 'A',
+                                  style: const TextStyle(
+                                      color: Color(0xFF1A56DB),
+                                      fontWeight: FontWeight.bold),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1243,7 +1487,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Welcome back, $userName',
+                            '${'welcome_back_greeting'.tr()} $userName',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -1251,10 +1495,10 @@ class _DashboardHomeState extends State<DashboardHome> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
-                            'Monitor and manage your queue system efficiently',
+                          Text(
+                            'web_dashboard_subtitle'.tr(),
                             style:
-                                TextStyle(color: Colors.white70, fontSize: 13),
+                                const TextStyle(color: Colors.white70, fontSize: 13),
                           ),
                         ],
                       ),
@@ -1262,9 +1506,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                     GestureDetector(
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Help & Support coming soon'),
-                              backgroundColor: Color(0xFF1A56DB)),
+                          SnackBar(
+                              content: Text('web_help_support_coming_soon'.tr()),
+                              backgroundColor: const Color(0xFF1A56DB)),
                         );
                       },
                       child: Container(
@@ -1289,25 +1533,25 @@ class _DashboardHomeState extends State<DashboardHome> {
                   return Row(
                     children: [
                       Expanded(
-                        child: _buildStatCard('Total Services', _statValue('totalServices'),
+                        child: _buildStatCard('web_stat_total_services'.tr(), _statValue('totalServices'),
                             Icons.assignment, Colors.blue,
-                            onTap: () => _openScreen(const WebAppointments())),
+                            onTap: () => _openScreen(WebAppointments(userRole: widget.userRole, staffId: widget.staffId))),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
                         child: _buildStatCard(
-                            'Active Queues', _statValue('activeQueues'), Icons.queue, Colors.green,
+                            'web_stat_active_queues'.tr(), _statValue('activeQueues'), Icons.queue, Colors.green,
                             onTap: () => _openScreen(const WebQueueManagement())),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Today\'s Appointments', _statValue('todaysAppointments'),
+                        child: _buildStatCard('web_stat_todays_appointments'.tr(), _statValue('todaysAppointments'),
                             Icons.calendar_today, Colors.orange,
-                            onTap: () => _openScreen(const WebAppointments())),
+                            onTap: () => _openScreen(WebAppointments(userRole: widget.userRole, staffId: widget.staffId))),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Pending Documents', _statValue('pendingDocuments'),
+                        child: _buildStatCard('web_stat_pending_documents'.tr(), _statValue('pendingDocuments'),
                             Icons.description, Colors.red,
                             onTap: () => _openScreen(const WebDocumentManagement())),
                       ),
@@ -1324,24 +1568,24 @@ class _DashboardHomeState extends State<DashboardHome> {
                   return Row(
                     children: [
                       Expanded(
-                        child: _buildStatCard('Total Citizens', _statValue('totalCitizens'),
+                        child: _buildStatCard('web_stat_total_citizens'.tr(), _statValue('totalCitizens'),
                             Icons.people, Colors.purple,
-                            onTap: () => _openScreen(const WebAppointments())),
+                            onTap: () => _openScreen(WebAppointments(userRole: widget.userRole, staffId: widget.staffId))),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Services Completed', _statValue('completedServices'),
+                        child: _buildStatCard('web_stat_services_completed'.tr(), _statValue('completedServices'),
                             Icons.check_circle, Colors.teal,
-                            onTap: () => _openScreen(const WebAppointments())),
+                            onTap: () => _openScreen(WebAppointments(userRole: widget.userRole, staffId: widget.staffId))),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Avg. Satisfaction', _statValue('avgSatisfaction'),
+                        child: _buildStatCard('web_stat_avg_satisfaction'.tr(), _statValue('avgSatisfaction'),
                             Icons.star, Colors.amber),
                       ),
                       SizedBox(width: spacing),
                       Expanded(
-                        child: _buildStatCard('Avg. Response', _statValue('avgResponseMinutes', suffix: 'min'),
+                        child: _buildStatCard('web_stat_avg_response'.tr(), _statValue('avgResponseMinutes', suffix: 'min'),
                             Icons.timer, Colors.indigo,
                             onTap: () => _openScreen(const WebQueueManagement())),
                       ),
@@ -1369,8 +1613,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Recent Activity',
-                                  style: TextStyle(
+                              Text('web_recent_activity'.tr(),
+                                  style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
@@ -1389,8 +1633,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Quick Stats',
-                                  style: TextStyle(
+                              Text('web_quick_stats'.tr(),
+                                  style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
@@ -1417,8 +1661,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Recent Activity',
-                                  style: TextStyle(
+                              Text('web_recent_activity'.tr(),
+                                  style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),
@@ -1440,8 +1684,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Quick Stats',
-                                  style: TextStyle(
+                              Text('web_quick_stats'.tr(),
+                                  style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 12),

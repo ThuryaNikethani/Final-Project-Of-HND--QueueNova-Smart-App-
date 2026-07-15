@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'web_api_service.dart';
 
 class WebSystemHealth extends StatefulWidget {
   const WebSystemHealth({super.key});
@@ -9,61 +12,182 @@ class WebSystemHealth extends StatefulWidget {
 
 class _WebSystemHealthState extends State<WebSystemHealth> {
   bool autoRefresh = false;
+  bool _loading = true;
   String overallStatus = 'Operational';
-  String uptime = '99.9%';
-  
-  List<Map<String, dynamic>> services = [
-    {'name': 'Database Server', 'status': 'Healthy', 'uptime': '99.99%', 'response': '12ms', 'lastCheck': 'Just now'},
-    {'name': 'API Gateway', 'status': 'Healthy', 'uptime': '99.95%', 'response': '45ms', 'lastCheck': 'Just now'},
-    {'name': 'Notification Service', 'status': 'Healthy', 'uptime': '99.90%', 'response': '89ms', 'lastCheck': 'Just now'},
-    {'name': 'QR Service', 'status': 'Healthy', 'uptime': '99.98%', 'response': '23ms', 'lastCheck': 'Just now'},
-    {'name': 'File Storage', 'status': 'Degraded', 'uptime': '98.50%', 'response': '234ms', 'lastCheck': '2 min ago'},
-  ];
+  String uptime = '—';
+  String uptime24hLabel = '—';
+  Timer? _autoRefreshTimer;
 
-  List<Map<String, dynamic>> systemMetrics = [
-    {'metric': 'CPU Usage', 'value': '32%', 'status': 'Good', 'icon': Icons.memory, 'color': Colors.green},
-    {'metric': 'Memory Usage', 'value': '2.4 GB / 8 GB', 'status': 'Good', 'icon': Icons.sd_storage, 'color': Colors.green},
-    {'metric': 'Disk Space', 'value': '45% used', 'status': 'Warning', 'icon': Icons.storage, 'color': Colors.orange},
-    {'metric': 'Active Sessions', 'value': '47', 'status': 'Good', 'icon': Icons.people, 'color': Colors.green},
-    {'metric': 'API Requests/min', 'value': '234', 'status': 'Good', 'icon': Icons.api, 'color': Colors.green},
-  ];
+  List<Map<String, dynamic>> services = [];
+  List<Map<String, dynamic>> systemMetrics = [];
+  List<Map<String, dynamic>> alerts = [];
 
-  List<Map<String, dynamic>> alerts = [
-    {'type': 'Warning', 'title': 'File Storage Response Time High', 'description': 'Response time increased to 234ms', 'time': '2 min ago', 'color': Colors.orange},
-    {'type': 'Success', 'title': 'Database Backup Completed', 'description': 'Full backup completed successfully', 'time': '1 hour ago', 'color': Colors.green},
-    {'type': 'Info', 'title': 'New User Registered', 'description': 'Admin added new officer account', 'time': '3 hours ago', 'color': Colors.blue},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadHealth();
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  num? _asNum(dynamic v) => v == null ? null : num.tryParse(v.toString());
+
+  Future<void> _loadHealth() async {
+    final health = await WebApiService.getSystemHealth();
+    final logs = await WebApiService.getAuditLogs(limit: 5);
+    if (!mounted) return;
+
+    if (health != null) {
+      final cpuPercent = _asNum(health['cpuPercent'])?.toDouble() ?? 0;
+      final memUsedMb = _asNum(health['memoryUsedMb'])?.toInt() ?? 0;
+      final memTotalMb = _asNum(health['memoryTotalMb'])?.toInt() ?? 0;
+      final diskPercent = _asNum(health['diskUsedPercent'])?.toDouble();
+      final activeSessions = _asNum(health['activeSessions'])?.toInt() ?? 0;
+      final requestsPerMin = _asNum(health['requestsPerMin'])?.toInt() ?? 0;
+      final overallUptime24h = _asNum(health['overallUptime24h'])?.toDouble();
+      final overallUptime30d = _asNum(health['overallUptime30d'])?.toDouble();
+
+      setState(() {
+        overallStatus = health['status']?.toString() ?? 'Operational';
+        uptime = overallUptime30d != null ? '${overallUptime30d.toStringAsFixed(1)}%' : 'web_no_data_yet'.tr();
+        uptime24hLabel = overallUptime24h != null ? '${overallUptime24h.toStringAsFixed(1)}%' : 'web_no_data_yet'.tr();
+
+        systemMetrics = [
+          {'metric': 'CPU Usage', 'value': '${cpuPercent.toStringAsFixed(0)}%', 'status': cpuPercent > 80 ? 'Warning' : 'Good', 'icon': Icons.memory, 'color': cpuPercent > 80 ? Colors.orange : Colors.green},
+          {'metric': 'Memory Usage', 'value': '${(memUsedMb / 1024).toStringAsFixed(1)} GB / ${(memTotalMb / 1024).toStringAsFixed(1)} GB', 'status': memTotalMb > 0 && memUsedMb / memTotalMb > 0.85 ? 'Warning' : 'Good', 'icon': Icons.sd_storage, 'color': memTotalMb > 0 && memUsedMb / memTotalMb > 0.85 ? Colors.orange : Colors.green},
+          {'metric': 'Disk Space', 'value': diskPercent != null ? '${diskPercent.toStringAsFixed(0)}% used' : 'web_no_data_yet'.tr(), 'status': (diskPercent ?? 0) > 80 ? 'Warning' : 'Good', 'icon': Icons.storage, 'color': (diskPercent ?? 0) > 80 ? Colors.orange : Colors.green},
+          {'metric': 'Active Sessions', 'value': '$activeSessions', 'status': 'Good', 'icon': Icons.people, 'color': Colors.green},
+          {'metric': 'API Requests/min', 'value': '$requestsPerMin', 'status': 'Good', 'icon': Icons.api, 'color': Colors.green},
+        ];
+
+        final rawServices = (health['services'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        services = rawServices.map((s) {
+          final healthy = s['healthy'] == true;
+          final responseMs = _asNum(s['responseMs'])?.toInt();
+          final svcUptime = _asNum(s['uptime24h'])?.toDouble();
+          return {
+            'name': s['name']?.toString() ?? '',
+            'status': healthy ? 'Healthy' : 'Degraded',
+            'uptime': svcUptime != null ? '${svcUptime.toStringAsFixed(1)}%' : '—',
+            'response': responseMs != null ? '${responseMs}ms' : '—',
+            'lastCheck': 'web_just_now'.tr(),
+          };
+        }).toList();
+
+        _loading = false;
+      });
+    } else if (mounted) {
+      setState(() => _loading = false);
+    }
+
+    setState(() {
+      alerts = logs.take(5).map((log) {
+        final action = log['action']?.toString() ?? '';
+        final isWarning = action.contains('failed') || action.contains('blocked') || action.contains('delete') || action.contains('reject');
+        final isSuccess = action.contains('create') || action.contains('approve') || action.contains('backup');
+        return {
+          'type': isWarning ? 'Warning' : (isSuccess ? 'Success' : 'Info'),
+          'title': _prettify(action),
+          'description': log['details']?.toString().isNotEmpty == true ? log['details'].toString() : action,
+          'time': _relativeTime(log['created_at']?.toString()),
+          'color': isWarning ? Colors.orange : (isSuccess ? Colors.green : Colors.blue),
+        };
+      }).toList();
+    });
+  }
+
+  String _prettify(String raw) => raw
+      .split(RegExp(r'[_\s]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+
+  String _relativeTime(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    final diff = DateTime.now().difference(dt.toLocal());
+    if (diff.inMinutes < 1) return 'web_just_now'.tr();
+    if (diff.inMinutes < 60) return '${diff.inMinutes} ${'web_min_ago'.tr()}';
+    if (diff.inHours < 24) return '${diff.inHours} ${(diff.inHours > 1 ? 'web_hours_ago' : 'web_hour_ago').tr()}';
+    return '${diff.inDays} ${(diff.inDays > 1 ? 'web_days_ago' : 'web_day_ago').tr()}';
+  }
 
   void _refreshStatus() {
-    setState(() {});
+    _loadHealth();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('System status refreshed'), backgroundColor: Colors.green),
+      SnackBar(content: Text('web_system_status_refreshed'.tr()), backgroundColor: Colors.green),
     );
+  }
+
+  void _setAutoRefresh(bool value) {
+    setState(() => autoRefresh = value);
+    _autoRefreshTimer?.cancel();
+    if (value) {
+      _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) => _loadHealth());
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'Operational': return 'web_status_operational'.tr();
+      case 'Healthy': return 'web_status_healthy'.tr();
+      case 'Degraded': return 'web_status_degraded'.tr();
+      default: return status;
+    }
+  }
+
+  String _metricLabel(String metric) {
+    switch (metric) {
+      case 'CPU Usage': return 'web_metric_cpu_usage'.tr();
+      case 'Memory Usage': return 'web_metric_memory_usage'.tr();
+      case 'Disk Space': return 'web_metric_disk_space'.tr();
+      case 'Active Sessions': return 'web_metric_active_sessions'.tr();
+      case 'API Requests/min': return 'web_metric_api_requests'.tr();
+      default: return metric;
+    }
+  }
+
+  String _serviceLabel(String name) {
+    switch (name) {
+      case 'Database Server': return 'web_service_database_server'.tr();
+      case 'API Gateway': return 'web_service_api_gateway'.tr();
+      case 'Notification Service': return 'web_service_notification'.tr();
+      case 'QR Service': return 'web_service_qr'.tr();
+      case 'File Storage': return 'web_service_file_storage'.tr();
+      default: return name;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('System Health Monitor'),
+        title: Text('web_system_health_title'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           Switch(
             value: autoRefresh,
-            onChanged: (v) => setState(() => autoRefresh = v),
+            onChanged: _setAutoRefresh,
             activeColor: const Color(0xFF1A56DB),
           ),
-          const Text('Auto Refresh', style: TextStyle(fontSize: 12)),
+          Text('web_auto_refresh'.tr(), style: const TextStyle(fontSize: 12)),
           const SizedBox(width: 20),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshStatus,
-            tooltip: 'Refresh',
+            tooltip: 'web_refresh_tooltip'.tr(),
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -82,9 +206,9 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('System Status: $overallStatus', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text('web_system_status_label'.tr(args: [_statusLabel(overallStatus)]), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                         const SizedBox(height: 4),
-                        Text('All systems are running normally. $uptime uptime in last 30 days.', style: const TextStyle(color: Colors.white70)),
+                        Text('web_all_systems_normal'.tr(args: [uptime]), style: const TextStyle(color: Colors.white70)),
                       ],
                     ),
                   ),
@@ -94,7 +218,7 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text('Last 24h: 99.95%', style: TextStyle(color: Colors.white)),
+                    child: Text('web_last_24h_uptime'.tr(args: [uptime24hLabel]), style: const TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
@@ -102,7 +226,7 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
             const SizedBox(height: 24),
             
             // System Metrics
-            const Text('System Metrics', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('web_system_metrics_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             GridView.count(
               shrinkWrap: true,
@@ -115,7 +239,7 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
             const SizedBox(height: 24),
             
             // Service Status
-            const Text('Service Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('web_service_status_title'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
@@ -127,24 +251,24 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
                   columnSpacing: 40,
-                  columns: const [
-                    DataColumn(label: Text('Service Name')),
-                    DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Uptime')),
-                    DataColumn(label: Text('Response Time')),
-                    DataColumn(label: Text('Last Check')),
+                  columns: [
+                    DataColumn(label: Text('web_col_service_name'.tr())),
+                    DataColumn(label: Text('web_col_status'.tr())),
+                    DataColumn(label: Text('web_col_uptime'.tr())),
+                    DataColumn(label: Text('web_col_response_time'.tr())),
+                    DataColumn(label: Text('web_col_last_check'.tr())),
                   ],
                   rows: services.map((service) {
                     final isHealthy = service['status'] == 'Healthy';
                     return DataRow(cells: [
-                      DataCell(Text(service['name'], style: const TextStyle(fontWeight: FontWeight.w500))),
+                      DataCell(Text(_serviceLabel(service['name'] as String), style: const TextStyle(fontWeight: FontWeight.w500))),
                       DataCell(Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: (isHealthy ? Colors.green : Colors.orange).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(service['status'], style: TextStyle(color: isHealthy ? Colors.green : Colors.orange)),
+                        child: Text(_statusLabel(service['status'] as String), style: TextStyle(color: isHealthy ? Colors.green : Colors.orange)),
                       )),
                       DataCell(Text(service['uptime'])),
                       DataCell(Text(service['response'])),
@@ -166,9 +290,9 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text('Recent Alerts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text('web_recent_alerts'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                   const Divider(height: 1),
                   ...alerts.map((alert) => ListTile(
@@ -206,7 +330,7 @@ class _WebSystemHealthState extends State<WebSystemHealth> {
         children: [
           Icon(metric['icon'], size: 32, color: metric['color']),
           const SizedBox(height: 8),
-          Text(metric['metric'], style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+          Text(_metricLabel(metric['metric'] as String), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           Text(metric['value'], style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: metric['color'])),
         ],

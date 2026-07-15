@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/login_screen.dart';
 import 'package:queuenova_mobile/screens/home_screen.dart';
+import 'package:queuenova_mobile/screens/biometric_lock_screen.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
+import 'package:queuenova_mobile/services/biometric_service.dart';
 import 'package:provider/provider.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -76,11 +79,21 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (!mounted) return;
 
+    Widget destination;
+    if (!authService.isAuthenticated) {
+      destination = const LoginScreen();
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final biometricEnabled = prefs.getBool('biometric_enabled') ?? false;
+      destination = (biometricEnabled && await BiometricService.isAvailable())
+          ? const BiometricLockScreen()
+          : const HomeScreen();
+    }
+
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => authService.isAuthenticated ? const HomeScreen() : const LoginScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => destination),
     );
   }
 

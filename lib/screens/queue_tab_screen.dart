@@ -1,12 +1,33 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
+import 'package:queuenova_mobile/services/ml_prediction_service.dart';
+import 'package:queuenova_mobile/services/appointment_service.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 
 const Map<String, String> _kQueueOfficeKeys = {
   'Divisional Secretariat - Colombo': 'office_divisional_secretariat_colombo',
+  'Divisional Secretariat - Kandy': 'office_divisional_secretariat_kandy',
+  'Divisional Secretariat - Galle': 'office_ds_galle',
+  'Divisional Secretariat - Kurunegala': 'office_ds_kurunegala',
   'RMV - Werahera': 'office_rmv_werahera',
+  'RMV - Kiribathgoda': 'office_rmv_kiribathgoda',
+  'RMV - Kandy': 'office_rmv_kandy',
   'Passport Office - Battaramulla': 'office_passport_battaramulla',
-  'Department of Registration': 'office_department_registration',
+  'Passport Office - Kandy': 'office_passport_kandy',
+  'Department of Registration - Colombo': 'office_dept_registration_colombo',
+  'NIC Service Center - Colombo': 'office_nic_center_colombo',
+  'NIC Service Center - Kandy': 'office_nic_center_kandy',
+  'Immigration Department - Battaramulla': 'office_immigration_battaramulla',
+  'Land Registry Office - Colombo': 'office_land_registry_colombo',
+  'Land Registry Office - Kandy': 'office_land_registry_kandy',
+  'Municipal Council - Colombo': 'office_municipal_council_colombo',
+  'Municipal Council - Kandy': 'office_municipal_council_kandy',
+  'Registrar General Department - Colombo': 'office_registrar_general_colombo',
 };
 
 class QueueTabScreen extends StatefulWidget {
@@ -17,33 +38,187 @@ class QueueTabScreen extends StatefulWidget {
 }
 
 class _QueueTabScreenState extends State<QueueTabScreen> {
-  String selectedOffice = 'Divisional Secretariat - Colombo';
+  // Survives this screen's State being torn down/recreated when the bottom
+  // nav swaps tabs (HomeScreen swaps `body:` directly, no IndexedStack), so
+  // a manual office pick isn't clobbered by auto-detection on revisit.
+  static String? _persistedSelectedOffice;
+  static bool _userSelectedManually = false;
+
+  String selectedOffice = _persistedSelectedOffice ?? 'Divisional Secretariat - Colombo';
   bool isPriority = false;
-  int currentServing = 22;
-  int currentToken = 24;
-  int waitingAhead = 8;
-  int estimatedWait = 35;
+  String currentServing = '--';
+  String currentToken = '--';
+  int waitingAhead = 0;
+  int estimatedWait = 0;
+  bool _loading = true;
+  DateTime _lastUpdated = DateTime.now();
 
-  final List<String> offices = [
-    'Divisional Secretariat - Colombo',
-    'RMV - Werahera',
-    'Passport Office - Battaramulla',
-    'Department of Registration',
-  ];
+  final List<String> offices = _kQueueOfficeKeys.keys.toList();
 
-  final List<Map<String, dynamic>> queueItems = [
-    {'token': 'A-025', 'status': 'serving', 'time': '10:30 AM', 'estimated': 0},
-    {'token': 'A-026', 'status': 'next', 'time': '10:35 AM', 'estimated': 5},
-    {'token': 'A-027', 'status': 'waiting', 'time': '10:40 AM', 'estimated': 10},
-    {'token': 'A-028', 'status': 'waiting', 'time': '10:45 AM', 'estimated': 15},
-    {'token': 'A-029', 'status': 'waiting', 'time': '10:50 AM', 'estimated': 20},
-    {'token': 'A-030', 'status': 'waiting', 'time': '10:55 AM', 'estimated': 25},
-    {'token': 'A-031', 'status': 'waiting', 'time': '11:00 AM', 'estimated': 30},
-    {'token': 'A-032', 'status': 'waiting', 'time': '11:05 AM', 'estimated': 35},
-  ];
+  List<Map<String, dynamic>> queueItems = [];
+
+  String? _myNic;
+  String? _myName;
+  String? _myService;
+  socket_io.Socket? _socket;
+  Timer? _refreshTimer;
+  bool _initialLoad = true;
+  int _loadRequestId = 0;
 
   String get currentTime {
-    return DateFormat('hh:mm a').format(DateTime.now());
+    return DateFormat('hh:mm a').format(_lastUpdated);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _myNic = prefs.getString('userNIC');
+    _myName = prefs.getString('userName');
+    await _loadQueueData();
+    _socket = QueueStatusService.connect(onQueueChanged: _loadQueueData);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _loadQueueData());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  int? _tokenNumber(String? token) {
+    if (token == null) return null;
+    final digits = token.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.isEmpty ? null : int.tryParse(digits);
+  }
+
+  double get _progressValue {
+    final servingNum = _tokenNumber(currentServing);
+    final myNum = _tokenNumber(currentToken);
+    if (servingNum != null && myNum != null && myNum > 0) {
+      return (servingNum / myNum).clamp(0.0, 1.0);
+    }
+    return 0.0;
+  }
+
+  Future<String?> _latestUpcomingAppointmentOffice() async {
+    final appointments = await AppointmentService.getAppointments();
+    final upcoming = appointments
+        .where((a) => a.status == 'Confirmed' || a.status == 'Pending')
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    return upcoming.isNotEmpty ? upcoming.first.office : null;
+  }
+
+  Future<void> _loadQueueData() async {
+    final requestId = ++_loadRequestId;
+    final nic = _myNic ?? '';
+    final position = await QueueStatusService.getMyQueuePosition(nic);
+
+    String office = selectedOffice;
+    if (_initialLoad && !_userSelectedManually) {
+      final myOfficeId = position['officeId'] as String?;
+      if (position['found'] == true && myOfficeId != null && offices.contains(myOfficeId)) {
+        office = myOfficeId;
+      } else {
+        final appointmentOffice = await _latestUpcomingAppointmentOffice();
+        if (appointmentOffice != null && offices.contains(appointmentOffice)) {
+          office = appointmentOffice;
+        }
+      }
+    }
+    _initialLoad = false;
+
+    final results = await Future.wait([
+      QueueStatusService.getOfficeStats(office),
+      QueueStatusService.getWaitingList(office),
+      MLPredictionService.fetchAndPredict(officeName: office),
+    ]);
+
+    if (!mounted || requestId != _loadRequestId) return;
+
+    final stats = results[0] as Map<String, dynamic>;
+    final waitingList = (results[1] as List).cast<Map<String, dynamic>>();
+    final prediction = results[2] as QueuePrediction;
+
+    final avgServiceMinutes = (stats['avgWaitMinutes'] as num?)?.toDouble() ?? 8.0;
+
+    final items = <Map<String, dynamic>>[];
+    final servingToken = stats['currentServingToken'] as String?;
+    if (servingToken != null) {
+      items.add({'token': servingToken, 'status': 'serving', 'estimated': 0});
+    }
+    for (var i = 0; i < waitingList.length; i++) {
+      items.add({
+        'token': waitingList[i]['token'],
+        'status': i == 0 ? 'next' : 'waiting',
+        'estimated': ((i + 1) * avgServiceMinutes).round(),
+      });
+    }
+
+    setState(() {
+      selectedOffice = office;
+      _persistedSelectedOffice = office;
+      currentServing = servingToken ?? '--';
+      currentToken = position['found'] == true ? (position['token'] as String? ?? '--') : '--';
+      waitingAhead = position['found'] == true ? (position['position'] as num? ?? 0).toInt() : waitingList.length;
+      estimatedWait = prediction.estimatedWaitMinutes;
+      queueItems = items;
+      isPriority = position['found'] == true && position['isPriority'] == true;
+      _myService = position['found'] == true ? position['service'] as String? : null;
+      _lastUpdated = DateTime.now();
+      _loading = false;
+    });
+  }
+
+  /// Sends a priority-queue request to staff via the same `staff_notifications`
+  /// collection the officer dashboard already reads. Approval flips
+  /// `is_priority` on this citizen's queue entry — see `web_notifications.dart`
+  /// `_resolvePriorityRequest`. Requires an active waiting token.
+  Future<void> _requestPriorityQueue() async {
+    if (currentToken == '--') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('priority_no_active_token'.tr()), backgroundColor: AppColors.error, behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    final name = _myName?.isNotEmpty == true ? _myName! : 'A citizen';
+    final service = _myService ?? '';
+    bool sent = true;
+    try {
+      await FirebaseFirestore.instance.collection('staff_notifications').add({
+        'title': 'Priority Queue Request',
+        'message': '$name (token $currentToken, $service) requests priority queue access at $selectedOffice.',
+        'type': 'priority_request',
+        'action': 'Approve',
+        'targetRoles': const ['queueManager'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'token': currentToken,
+        'officeId': selectedOffice,
+        'nic': _myNic,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      sent = false;
+    }
+    if (!mounted) return;
+    if (sent) {
+      setState(() => isPriority = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('priority_request_submitted_short'.tr()), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('priority_request_failed'.tr()), backgroundColor: AppColors.error, behavior: SnackBarBehavior.floating),
+      );
+    }
   }
 
   @override
@@ -73,7 +248,11 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   items: offices.map((office) {
                     return DropdownMenuItem(value: office, child: Text(_kQueueOfficeKeys[office]!.tr()));
                   }).toList(),
-                  onChanged: (value) => setState(() => selectedOffice = value!),
+                  onChanged: (value) {
+                    _userSelectedManually = true;
+                    setState(() => selectedOffice = value!);
+                    _loadQueueData();
+                  },
                 ),
               ),
             ),
@@ -106,7 +285,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                'A-$currentServing',
+                                currentServing,
                                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
                             ),
@@ -130,7 +309,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                'A-$currentToken',
+                                currentToken,
                                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
                             ),
@@ -165,7 +344,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   ),
                   const SizedBox(height: 20),
                   LinearProgressIndicator(
-                    value: currentServing / currentToken,
+                    value: _progressValue,
                     backgroundColor: Colors.white.withOpacity(0.3),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
@@ -173,8 +352,8 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('token_number_label'.tr(args: ['$currentServing']), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
-                      Text('token_number_label'.tr(args: ['$currentToken']), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                      Text('token_number_label'.tr(args: [currentServing]), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                      Text('token_number_label'.tr(args: [currentToken]), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
                     ],
                   ),
                 ],
@@ -207,15 +386,10 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   Switch(
                     value: isPriority,
                     onChanged: (val) {
-                      setState(() => isPriority = val);
                       if (val) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('priority_request_submitted_short'.tr()),
-                            backgroundColor: AppColors.success,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        _requestPriorityQueue();
+                      } else {
+                        setState(() => isPriority = false);
                       }
                     },
                     activeColor: AppColors.primaryBlue,
@@ -252,7 +426,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 18),
-                    onPressed: () => setState(() {}),
+                    onPressed: _loading ? null : _loadQueueData,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -270,7 +444,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  'people_ahead_count'.tr(args: ['${queueItems.length}']),
+                  'people_ahead_count'.tr(args: ['$waitingAhead']),
                   style: TextStyle(fontSize: 12, color: AppColors.grey),
                 ),
               ],
@@ -298,7 +472,7 @@ class _QueueTabScreenState extends State<QueueTabScreen> {
                   statusText = 'waiting'.tr();
                 }
 
-                final isCurrentUser = item['token'] == 'A-$currentToken';
+                final isCurrentUser = item['token'] == currentToken;
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),

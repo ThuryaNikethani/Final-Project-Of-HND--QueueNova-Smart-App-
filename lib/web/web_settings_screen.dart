@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:provider/provider.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'web_role_model.dart';
+import 'web_api_service.dart';
+import 'web_preferences_provider.dart';
 
 class WebSettings extends StatefulWidget {
   final UserRole userRole;
   final String userName;
   final String userEmail;
+  final String staffId;
 
   const WebSettings({
     super.key,
     required this.userRole,
     required this.userName,
     required this.userEmail,
+    required this.staffId,
   });
 
   @override
@@ -62,15 +68,101 @@ class _WebSettingsState extends State<WebSettings> {
   String _backupSchedule = 'Daily';
   String _logRetention = '30 days';
 
+  /// staff_users.id — null when logged in via the hardcoded-fallback demo
+  /// login path (no real backend account to persist settings against).
+  int? get _numericStaffId => int.tryParse(widget.staffId);
+
+  Map<String, dynamic> _toJson() => {
+        'selectedLanguage': _selectedLanguage,
+        'selectedTheme': _selectedTheme,
+        'selectedFontSize': _selectedFontSize,
+        'emailNotifications': _emailNotifications,
+        'pushNotifications': _pushNotifications,
+        'soundEnabled': _soundEnabled,
+        'showRealTimeQueue': _showRealTimeQueue,
+        'autoAssignTokens': _autoAssignTokens,
+        'sendSMSAlerts': _sendSMSAlerts,
+        'maxQueueSize': _maxQueueSize,
+        'refreshInterval': _refreshInterval,
+        'showServiceMetrics': _showServiceMetrics,
+        'autoRefreshServices': _autoRefreshServices,
+        'showCustomerHistory': _showCustomerHistory,
+        'serviceTimeLimit': _serviceTimeLimit,
+        'showWalkInCustomers': _showWalkInCustomers,
+        'showDocumentChecklist': _showDocumentChecklist,
+        'autoPrintTokens': _autoPrintTokens,
+        'tokenPrefix': _tokenPrefix,
+        'showOfficerPerformance': _showOfficerPerformance,
+        'showServiceAnalytics': _showServiceAnalytics,
+        'showQueueAlerts': _showQueueAlerts,
+        'alertThreshold': _alertThreshold,
+        'showSystemHealth': _showSystemHealth,
+        'showUserActivity': _showUserActivity,
+        'autoBackup': _autoBackup,
+        'backupSchedule': _backupSchedule,
+        'logRetention': _logRetention,
+      };
+
+  void _applyJson(Map<String, dynamic> json) {
+    _selectedLanguage = json['selectedLanguage'] as String? ?? _selectedLanguage;
+    _selectedTheme = json['selectedTheme'] as String? ?? _selectedTheme;
+    _selectedFontSize = json['selectedFontSize'] as String? ?? _selectedFontSize;
+    _emailNotifications = json['emailNotifications'] as bool? ?? _emailNotifications;
+    _pushNotifications = json['pushNotifications'] as bool? ?? _pushNotifications;
+    _soundEnabled = json['soundEnabled'] as bool? ?? _soundEnabled;
+    _showRealTimeQueue = json['showRealTimeQueue'] as bool? ?? _showRealTimeQueue;
+    _autoAssignTokens = json['autoAssignTokens'] as bool? ?? _autoAssignTokens;
+    _sendSMSAlerts = json['sendSMSAlerts'] as bool? ?? _sendSMSAlerts;
+    _maxQueueSize = (json['maxQueueSize'] as num?)?.toInt() ?? _maxQueueSize;
+    _refreshInterval = (json['refreshInterval'] as num?)?.toInt() ?? _refreshInterval;
+    _showServiceMetrics = json['showServiceMetrics'] as bool? ?? _showServiceMetrics;
+    _autoRefreshServices = json['autoRefreshServices'] as bool? ?? _autoRefreshServices;
+    _showCustomerHistory = json['showCustomerHistory'] as bool? ?? _showCustomerHistory;
+    _serviceTimeLimit = (json['serviceTimeLimit'] as num?)?.toInt() ?? _serviceTimeLimit;
+    _showWalkInCustomers = json['showWalkInCustomers'] as bool? ?? _showWalkInCustomers;
+    _showDocumentChecklist = json['showDocumentChecklist'] as bool? ?? _showDocumentChecklist;
+    _autoPrintTokens = json['autoPrintTokens'] as bool? ?? _autoPrintTokens;
+    _tokenPrefix = (json['tokenPrefix'] as num?)?.toInt() ?? _tokenPrefix;
+    _showOfficerPerformance = json['showOfficerPerformance'] as bool? ?? _showOfficerPerformance;
+    _showServiceAnalytics = json['showServiceAnalytics'] as bool? ?? _showServiceAnalytics;
+    _showQueueAlerts = json['showQueueAlerts'] as bool? ?? _showQueueAlerts;
+    _alertThreshold = (json['alertThreshold'] as num?)?.toInt() ?? _alertThreshold;
+    _showSystemHealth = json['showSystemHealth'] as bool? ?? _showSystemHealth;
+    _showUserActivity = json['showUserActivity'] as bool? ?? _showUserActivity;
+    _autoBackup = json['autoBackup'] as bool? ?? _autoBackup;
+    _backupSchedule = json['backupSchedule'] as String? ?? _backupSchedule;
+    _logRetention = json['logRetention'] as String? ?? _logRetention;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
   }
 
-  void _loadSettings() {
-    // Load saved settings from SharedPreferences would go here
-    // For now using default values
+  void _loadSettings() async {
+    final id = _numericStaffId;
+    if (id == null) return;
+    final prefs = await WebApiService.getUserPreferences(id);
+    if (!mounted || prefs.isEmpty) return;
+    setState(() => _applyJson(prefs));
+    _applyLivePreferences();
+  }
+
+  /// Pushes the current Theme/Font Size/Language selections out to the
+  /// rest of the app (WebPreferencesProvider + easy_localization) instead
+  /// of only updating this screen's own local state.
+  void _applyLivePreferences() {
+    context.read<WebPreferencesProvider>().setThemeModeByName(_selectedTheme);
+    context.read<WebPreferencesProvider>().setFontScaleByName(_selectedFontSize);
+    final code = switch (_selectedLanguage) {
+      'Sinhala' => 'si',
+      'Tamil' => 'ta',
+      _ => 'en',
+    };
+    if (context.locale.languageCode != code) {
+      context.setLocale(Locale(code));
+    }
   }
 
   void _saveSettings() async {
@@ -78,18 +170,19 @@ class _WebSettingsState extends State<WebSettings> {
       _isLoading = true;
     });
 
-    // Save settings to SharedPreferences would go here
-    await Future.delayed(const Duration(seconds: 1));
+    final id = _numericStaffId;
+    final success = id == null || await WebApiService.updateUserPreferences(id, _toJson());
 
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
-      _saveSuccess = true;
+      _saveSuccess = success;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Settings saved successfully!'),
-        backgroundColor: Colors.green,
+      SnackBar(
+        content: Text(success ? 'web_settings_saved_success'.tr() : 'web_settings_save_failed'.tr()),
+        backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -108,13 +201,12 @@ class _WebSettingsState extends State<WebSettings> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Reset Settings'),
-        content: const Text(
-            'Are you sure you want to reset all settings to default values?'),
+        title: Text('web_reset_settings_title'.tr()),
+        content: Text('web_reset_settings_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () {
@@ -151,12 +243,17 @@ class _WebSettingsState extends State<WebSettings> {
                 _backupSchedule = 'Daily';
                 _logRetention = '30 days';
               });
+              _applyLivePreferences();
+              final id = _numericStaffId;
+              if (id != null) {
+                WebApiService.updateUserPreferences(id, _toJson());
+              }
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings reset to default!')),
+                SnackBar(content: Text('web_settings_reset_success'.tr())),
               );
             },
-            child: const Text('Reset'),
+            child: Text('web_reset'.tr()),
           ),
         ],
       ),
@@ -168,7 +265,7 @@ class _WebSettingsState extends State<WebSettings> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text('web_settings'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -180,20 +277,20 @@ class _WebSettingsState extends State<WebSettings> {
                 color: Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 16),
-                  SizedBox(width: 6),
-                  Text('Saved',
-                      style: TextStyle(color: Colors.green, fontSize: 12)),
+                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  const SizedBox(width: 6),
+                  Text('web_saved'.tr(),
+                      style: const TextStyle(color: Colors.green, fontSize: 12)),
                 ],
               ),
             ),
           IconButton(
             icon: const Icon(Icons.settings_backup_restore),
             onPressed: _resetToDefault,
-            tooltip: 'Reset to Default',
+            tooltip: 'web_reset_to_default'.tr(),
           ),
           const SizedBox(width: 8),
         ],
@@ -272,13 +369,11 @@ class _WebSettingsState extends State<WebSettings> {
 
                   const SizedBox(height: 24),
 
-                  // Role-Specific Dashboard Settings
+                  // Role-Specific Dashboard Settings (already includes the
+                  // common "General Settings" section at its end for every
+                  // role variant — do not add another _buildCommonSettings()
+                  // call here, or it renders twice).
                   _buildRoleSpecificSettings(),
-
-                  const SizedBox(height: 16),
-
-                  // Common Settings
-                  _buildCommonSettings(),
 
                   const SizedBox(height: 24),
 
@@ -289,7 +384,7 @@ class _WebSettingsState extends State<WebSettings> {
                         child: OutlinedButton.icon(
                           onPressed: _resetToDefault,
                           icon: const Icon(Icons.restart_alt),
-                          label: const Text('Reset to Default'),
+                          label: Text('web_reset_to_default'.tr()),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
@@ -303,7 +398,7 @@ class _WebSettingsState extends State<WebSettings> {
                         child: ElevatedButton.icon(
                           onPressed: _saveSettings,
                           icon: const Icon(Icons.save),
-                          label: const Text('Save All Settings'),
+                          label: Text('web_save_all_settings'.tr()),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1A56DB),
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -343,49 +438,49 @@ class _WebSettingsState extends State<WebSettings> {
     return Column(
       children: [
         _buildSettingsSection(
-          title: 'Queue Officer Dashboard',
+          title: 'web_settings_queue_officer_dashboard'.tr(),
           icon: Icons.queue_play_next,
           color: const Color(0xFF10B981),
           children: [
             _buildSwitchTile(
-              title: 'Show Real-Time Queue Status',
-              subtitle: 'Display live queue updates on your dashboard',
+              title: 'web_settings_show_realtime_queue'.tr(),
+              subtitle: 'web_settings_show_realtime_queue_sub'.tr(),
               value: _showRealTimeQueue,
               onChanged: (value) => setState(() => _showRealTimeQueue = value),
               icon: Icons.timeline,
             ),
             _buildSwitchTile(
-              title: 'Auto-Assign Tokens',
-              subtitle: 'Automatically assign queue tokens to customers',
+              title: 'web_settings_auto_assign_tokens'.tr(),
+              subtitle: 'web_settings_auto_assign_tokens_sub'.tr(),
               value: _autoAssignTokens,
               onChanged: (value) => setState(() => _autoAssignTokens = value),
               icon: Icons.qr_code_scanner,
             ),
             _buildSwitchTile(
-              title: 'Send SMS Alerts',
-              subtitle: 'Send SMS notifications to customers',
+              title: 'web_settings_send_sms_alerts'.tr(),
+              subtitle: 'web_settings_send_sms_alerts_sub'.tr(),
               value: _sendSMSAlerts,
               onChanged: (value) => setState(() => _sendSMSAlerts = value),
               icon: Icons.sms,
             ),
             _buildSliderTile(
-              title: 'Maximum Queue Size',
+              title: 'web_settings_max_queue_size'.tr(),
               value: _maxQueueSize.toDouble(),
               min: 10,
               max: 200,
               onChanged: (value) =>
                   setState(() => _maxQueueSize = value.round()),
-              suffix: 'tokens',
+              suffix: 'web_settings_suffix_tokens'.tr(),
               icon: Icons.people,
             ),
             _buildSliderTile(
-              title: 'Dashboard Refresh Interval',
+              title: 'web_settings_refresh_interval'.tr(),
               value: _refreshInterval.toDouble(),
               min: 15,
               max: 120,
               onChanged: (value) =>
                   setState(() => _refreshInterval = value.round()),
-              suffix: 'seconds',
+              suffix: 'web_settings_suffix_seconds'.tr(),
               icon: Icons.refresh,
             ),
           ],
@@ -401,41 +496,41 @@ class _WebSettingsState extends State<WebSettings> {
     return Column(
       children: [
         _buildSettingsSection(
-          title: 'Service Officer Dashboard',
+          title: 'web_settings_service_officer_dashboard'.tr(),
           icon: Icons.assignment_turned_in,
           color: const Color(0xFF8B5CF6),
           children: [
             _buildSwitchTile(
-              title: 'Show Service Metrics',
-              subtitle: 'Display service completion statistics',
+              title: 'web_settings_show_service_metrics'.tr(),
+              subtitle: 'web_settings_show_service_metrics_sub'.tr(),
               value: _showServiceMetrics,
               onChanged: (value) => setState(() => _showServiceMetrics = value),
               icon: Icons.bar_chart,
             ),
             _buildSwitchTile(
-              title: 'Auto-Refresh Services List',
-              subtitle: 'Automatically refresh the services list',
+              title: 'web_settings_auto_refresh_services'.tr(),
+              subtitle: 'web_settings_auto_refresh_services_sub'.tr(),
               value: _autoRefreshServices,
               onChanged: (value) =>
                   setState(() => _autoRefreshServices = value),
               icon: Icons.autorenew,
             ),
             _buildSwitchTile(
-              title: 'Show Customer History',
-              subtitle: 'Display customer service history',
+              title: 'web_settings_show_customer_history'.tr(),
+              subtitle: 'web_settings_show_customer_history_sub'.tr(),
               value: _showCustomerHistory,
               onChanged: (value) =>
                   setState(() => _showCustomerHistory = value),
               icon: Icons.history,
             ),
             _buildSliderTile(
-              title: 'Service Time Limit',
+              title: 'web_settings_service_time_limit'.tr(),
               value: _serviceTimeLimit.toDouble(),
               min: 5,
               max: 60,
               onChanged: (value) =>
                   setState(() => _serviceTimeLimit = value.round()),
-              suffix: 'minutes',
+              suffix: 'web_settings_suffix_minutes'.tr(),
               icon: Icons.timer,
             ),
           ],
@@ -451,35 +546,35 @@ class _WebSettingsState extends State<WebSettings> {
     return Column(
       children: [
         _buildSettingsSection(
-          title: 'Reception Officer Dashboard',
+          title: 'web_settings_reception_officer_dashboard'.tr(),
           icon: Icons.receipt_long,
           color: const Color(0xFFF59E0B),
           children: [
             _buildSwitchTile(
-              title: 'Show Walk-in Customers',
-              subtitle: 'Display walk-in customer list',
+              title: 'web_settings_show_walkin_customers'.tr(),
+              subtitle: 'web_settings_show_walkin_customers_sub'.tr(),
               value: _showWalkInCustomers,
               onChanged: (value) =>
                   setState(() => _showWalkInCustomers = value),
               icon: Icons.people,
             ),
             _buildSwitchTile(
-              title: 'Show Document Checklist',
-              subtitle: 'Display required documents checklist',
+              title: 'web_settings_show_doc_checklist'.tr(),
+              subtitle: 'web_settings_show_doc_checklist_sub'.tr(),
               value: _showDocumentChecklist,
               onChanged: (value) =>
                   setState(() => _showDocumentChecklist = value),
               icon: Icons.checklist,
             ),
             _buildSwitchTile(
-              title: 'Auto-Print Tokens',
-              subtitle: 'Automatically print queue tokens',
+              title: 'web_settings_auto_print_tokens'.tr(),
+              subtitle: 'web_settings_auto_print_tokens_sub'.tr(),
               value: _autoPrintTokens,
               onChanged: (value) => setState(() => _autoPrintTokens = value),
               icon: Icons.print,
             ),
             _buildDropdownTile(
-              title: 'Token Prefix',
+              title: 'web_settings_token_prefix'.tr(),
               value: _tokenPrefix.toString(),
               items: const ['1', '2', '3', '4', '5'],
               onChanged: (value) =>
@@ -499,41 +594,41 @@ class _WebSettingsState extends State<WebSettings> {
     return Column(
       children: [
         _buildSettingsSection(
-          title: 'Supervisor Dashboard',
+          title: 'web_settings_supervisor_dashboard'.tr(),
           icon: Icons.analytics,
           color: const Color(0xFFEC4899),
           children: [
             _buildSwitchTile(
-              title: 'Show Officer Performance',
-              subtitle: 'Display officer performance metrics',
+              title: 'web_settings_show_officer_performance'.tr(),
+              subtitle: 'web_settings_show_officer_performance_sub'.tr(),
               value: _showOfficerPerformance,
               onChanged: (value) =>
                   setState(() => _showOfficerPerformance = value),
               icon: Icons.assessment,
             ),
             _buildSwitchTile(
-              title: 'Show Service Analytics',
-              subtitle: 'Display service analytics and trends',
+              title: 'web_settings_show_service_analytics'.tr(),
+              subtitle: 'web_settings_show_service_analytics_sub'.tr(),
               value: _showServiceAnalytics,
               onChanged: (value) =>
                   setState(() => _showServiceAnalytics = value),
               icon: Icons.show_chart,
             ),
             _buildSwitchTile(
-              title: 'Show Queue Alerts',
-              subtitle: 'Display queue threshold alerts',
+              title: 'web_settings_show_queue_alerts'.tr(),
+              subtitle: 'web_settings_show_queue_alerts_sub'.tr(),
               value: _showQueueAlerts,
               onChanged: (value) => setState(() => _showQueueAlerts = value),
               icon: Icons.notifications_active,
             ),
             _buildSliderTile(
-              title: 'Alert Threshold',
+              title: 'web_settings_alert_threshold'.tr(),
               value: _alertThreshold.toDouble(),
               min: 5,
               max: 50,
               onChanged: (value) =>
                   setState(() => _alertThreshold = value.round()),
-              suffix: 'customers in queue',
+              suffix: 'web_settings_suffix_customers_in_queue'.tr(),
               icon: Icons.warning,
             ),
           ],
@@ -549,40 +644,40 @@ class _WebSettingsState extends State<WebSettings> {
     return Column(
       children: [
         _buildSettingsSection(
-          title: 'Administrator Dashboard',
+          title: 'web_settings_administrator_dashboard'.tr(),
           icon: Icons.admin_panel_settings,
           color: const Color(0xFFEF4444),
           children: [
             _buildSwitchTile(
-              title: 'Show System Health',
-              subtitle: 'Display system health metrics',
+              title: 'web_settings_show_system_health'.tr(),
+              subtitle: 'web_settings_show_system_health_sub'.tr(),
               value: _showSystemHealth,
               onChanged: (value) => setState(() => _showSystemHealth = value),
               icon: Icons.health_and_safety,
             ),
             _buildSwitchTile(
-              title: 'Show User Activity',
-              subtitle: 'Display user activity logs',
+              title: 'web_settings_show_user_activity'.tr(),
+              subtitle: 'web_settings_show_user_activity_sub'.tr(),
               value: _showUserActivity,
               onChanged: (value) => setState(() => _showUserActivity = value),
               icon: Icons.history,
             ),
             _buildSwitchTile(
-              title: 'Auto-Backup System',
-              subtitle: 'Automatically backup system data',
+              title: 'web_settings_auto_backup'.tr(),
+              subtitle: 'web_settings_auto_backup_sub'.tr(),
               value: _autoBackup,
               onChanged: (value) => setState(() => _autoBackup = value),
               icon: Icons.backup,
             ),
             _buildDropdownTile(
-              title: 'Backup Schedule',
+              title: 'web_settings_backup_schedule'.tr(),
               value: _backupSchedule,
               items: const ['Daily', 'Weekly', 'Monthly'],
               onChanged: (value) => setState(() => _backupSchedule = value),
               icon: Icons.schedule,
             ),
             _buildDropdownTile(
-              title: 'Log Retention Period',
+              title: 'web_settings_log_retention'.tr(),
               value: _logRetention,
               items: const [
                 '7 days',
@@ -605,49 +700,58 @@ class _WebSettingsState extends State<WebSettings> {
   // ========== COMMON SETTINGS FOR ALL USERS ==========
   Widget _buildCommonSettings() {
     return _buildSettingsSection(
-      title: 'General Settings',
+      title: 'web_general_settings'.tr(),
       icon: Icons.settings,
       color: const Color(0xFF1A56DB),
       children: [
         _buildDropdownTile(
-          title: 'Language',
+          title: 'web_settings_language'.tr(),
           value: _selectedLanguage,
           items: const ['English', 'Sinhala', 'Tamil'],
-          onChanged: (value) => setState(() => _selectedLanguage = value),
+          onChanged: (value) {
+            setState(() => _selectedLanguage = value);
+            _applyLivePreferences();
+          },
           icon: Icons.language,
         ),
         _buildDropdownTile(
-          title: 'Theme',
+          title: 'web_settings_theme'.tr(),
           value: _selectedTheme,
           items: const ['Light', 'Dark', 'System Default'],
-          onChanged: (value) => setState(() => _selectedTheme = value),
+          onChanged: (value) {
+            setState(() => _selectedTheme = value);
+            _applyLivePreferences();
+          },
           icon: Icons.palette,
         ),
         _buildDropdownTile(
-          title: 'Font Size',
+          title: 'web_settings_font_size'.tr(),
           value: _selectedFontSize,
           items: const ['Small', 'Medium', 'Large'],
-          onChanged: (value) => setState(() => _selectedFontSize = value),
+          onChanged: (value) {
+            setState(() => _selectedFontSize = value);
+            _applyLivePreferences();
+          },
           icon: Icons.text_fields,
         ),
         const Divider(),
         _buildSwitchTile(
-          title: 'Email Notifications',
-          subtitle: 'Receive email notifications',
+          title: 'web_settings_email_notifications'.tr(),
+          subtitle: 'web_settings_email_notifications_sub'.tr(),
           value: _emailNotifications,
           onChanged: (value) => setState(() => _emailNotifications = value),
           icon: Icons.email,
         ),
         _buildSwitchTile(
-          title: 'Push Notifications',
-          subtitle: 'Receive browser push notifications',
+          title: 'web_settings_push_notifications'.tr(),
+          subtitle: 'web_settings_push_notifications_sub'.tr(),
           value: _pushNotifications,
           onChanged: (value) => setState(() => _pushNotifications = value),
           icon: Icons.notifications,
         ),
         _buildSwitchTile(
-          title: 'Sound Alerts',
-          subtitle: 'Play sound for notifications',
+          title: 'web_settings_sound_alerts'.tr(),
+          subtitle: 'web_settings_sound_alerts_sub'.tr(),
           value: _soundEnabled,
           onChanged: (value) => setState(() => _soundEnabled = value),
           icon: Icons.volume_up,

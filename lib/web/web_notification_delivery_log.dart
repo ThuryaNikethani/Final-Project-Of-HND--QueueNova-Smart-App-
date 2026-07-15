@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 /// Live audit trail of every SMS/push send attempt (written by
 /// [WebAccountDeletionRequests] and any future notification flow), so staff
@@ -72,6 +73,15 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
     }).toList();
   }
 
+  String _statusFilterLabel(String status) {
+    switch (status) {
+      case 'All': return 'web_status_all'.tr();
+      case 'Success': return 'web_status_success'.tr();
+      case 'Failed': return 'web_status_failed'.tr();
+      default: return status;
+    }
+  }
+
   String _formatTimestamp(Timestamp? ts) {
     if (ts == null) return '—';
     final dt = ts.toDate();
@@ -90,7 +100,7 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Notification Delivery Log'),
+        title: Text('web_menu_notification_delivery_log'.tr()),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -101,7 +111,7 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'Failed to load delivery log:\n$_error',
+                      'web_failed_load_delivery_log'.tr(args: ['$_error']),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.red),
                     ),
@@ -113,15 +123,15 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                     children: [
                       Row(
                         children: [
-                          _buildStatCard('Total', _logs.length.toString(), Colors.blue),
+                          _buildStatCard('web_stat_total'.tr(), _logs.length.toString(), Colors.blue),
                           const SizedBox(width: 12),
-                          _buildStatCard('SMS', smsCount.toString(), Colors.purple),
+                          _buildStatCard('web_channel_sms'.tr(), smsCount.toString(), Colors.purple),
                           const SizedBox(width: 12),
-                          _buildStatCard('Push', pushCount.toString(), Colors.teal),
+                          _buildStatCard('web_channel_push'.tr(), pushCount.toString(), Colors.teal),
                           const SizedBox(width: 12),
-                          _buildStatCard('Delivered', successCount.toString(), Colors.green),
+                          _buildStatCard('web_delivered_status'.tr(), successCount.toString(), Colors.green),
                           const SizedBox(width: 12),
-                          _buildStatCard('Failed', failedCount.toString(), Colors.red),
+                          _buildStatCard('web_status_failed'.tr(), failedCount.toString(), Colors.red),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -138,10 +148,10 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                               flex: 2,
                               child: TextField(
                                 onChanged: (v) => setState(() => _searchQuery = v),
-                                decoration: const InputDecoration(
-                                  hintText: 'Search by recipient, citizen uid, or title...',
-                                  prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
+                                decoration: InputDecoration(
+                                  hintText: 'web_search_delivery_log_hint'.tr(),
+                                  prefixIcon: const Icon(Icons.search),
+                                  border: const OutlineInputBorder(),
                                 ),
                               ),
                             ),
@@ -149,9 +159,9 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                             Expanded(
                               child: DropdownButtonFormField<String>(
                                 value: _channelFilter,
-                                decoration: const InputDecoration(labelText: 'Channel', border: OutlineInputBorder()),
+                                decoration: InputDecoration(labelText: 'web_channel_label'.tr(), border: const OutlineInputBorder()),
                                 items: _channels
-                                    .map((c) => DropdownMenuItem(value: c, child: Text(c == 'All' ? c : c.toUpperCase())))
+                                    .map((c) => DropdownMenuItem(value: c, child: Text(c == 'All' ? 'web_status_all'.tr() : c.toUpperCase())))
                                     .toList(),
                                 onChanged: (v) => setState(() => _channelFilter = v!),
                               ),
@@ -160,8 +170,8 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                             Expanded(
                               child: DropdownButtonFormField<String>(
                                 value: _statusFilter,
-                                decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-                                items: _statuses.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                                decoration: InputDecoration(labelText: 'web_col_status'.tr(), border: const OutlineInputBorder()),
+                                items: _statuses.map((s) => DropdownMenuItem(value: s, child: Text(_statusFilterLabel(s)))).toList(),
                                 onChanged: (v) => setState(() => _statusFilter = v!),
                               ),
                             ),
@@ -177,20 +187,20 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                             boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10)],
                           ),
                           child: filtered.isEmpty
-                              ? const Center(child: Text('No delivery attempts found'))
+                              ? Center(child: Text('web_no_delivery_attempts'.tr()))
                               : SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
                                   child: SingleChildScrollView(
                                     scrollDirection: Axis.vertical,
                                     child: DataTable(
                                       columnSpacing: 20,
-                                      columns: const [
-                                        DataColumn(label: Text('Timestamp', style: TextStyle(fontWeight: FontWeight.w600))),
-                                        DataColumn(label: Text('Channel', style: TextStyle(fontWeight: FontWeight.w600))),
-                                        DataColumn(label: Text('Recipient', style: TextStyle(fontWeight: FontWeight.w600))),
-                                        DataColumn(label: Text('Title', style: TextStyle(fontWeight: FontWeight.w600))),
-                                        DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.w600))),
-                                        DataColumn(label: Text('Error', style: TextStyle(fontWeight: FontWeight.w600))),
+                                      columns: [
+                                        DataColumn(label: Text('web_col_timestamp'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        DataColumn(label: Text('web_channel_label'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        DataColumn(label: Text('web_recipient_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        DataColumn(label: Text('web_title_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        DataColumn(label: Text('web_col_status'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        DataColumn(label: Text('web_error_col'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                                       ],
                                       rows: filtered.map((log) {
                                         final success = log['success'] as bool? ?? false;
@@ -217,13 +227,13 @@ class _WebNotificationDeliveryLogState extends State<WebNotificationDeliveryLog>
                                               color: (success ? Colors.green : Colors.red).withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(12),
                                             ),
-                                            child: Text(success ? 'Delivered' : 'Failed',
+                                            child: Text(success ? 'web_delivered_status'.tr() : 'web_status_failed'.tr(),
                                                 style: TextStyle(color: success ? Colors.green : Colors.red, fontWeight: FontWeight.w600)),
                                           )),
                                           DataCell(SizedBox(
                                             width: 220,
                                             child: Text(
-                                              success ? '—' : (log['error'] as String? ?? 'Unknown error'),
+                                              success ? '—' : (log['error'] as String? ?? 'web_unknown_error'.tr()),
                                               style: const TextStyle(fontSize: 11, color: Colors.grey),
                                               overflow: TextOverflow.ellipsis,
                                             ),

@@ -46,7 +46,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedApt = selectedAppointment;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: Text('my_qr_code'.tr()),
@@ -96,7 +96,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      
+
                       if (selectedApt != null)
                         Container(
                           padding: const EdgeInsets.all(20),
@@ -125,7 +125,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                           ),
                         ),
                       const SizedBox(height: 24),
-                      
+
                       if (selectedApt != null)
                         Container(
                           padding: const EdgeInsets.all(16),
@@ -150,7 +150,7 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
                           ),
                         ),
                       const SizedBox(height: 16),
-                      
+
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(

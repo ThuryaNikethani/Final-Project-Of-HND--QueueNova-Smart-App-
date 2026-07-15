@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'web_role_model.dart';
 import 'web_main.dart';
 import 'web_api_service.dart';
@@ -90,8 +91,17 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    // Try backend API first
-    final apiUser = await WebApiService.login(email, password);
+    // Try backend API first. A reachable server that rejects these
+    // credentials (e.g. a since-changed password) must not fall through to
+    // the hardcoded demo list below, or the old password would keep working
+    // forever — that fallback is only for when the server can't be reached.
+    Map<String, dynamic>? apiUser;
+    bool serverReachable = true;
+    try {
+      apiUser = await WebApiService.login(email, password);
+    } catch (e) {
+      serverReachable = false;
+    }
 
     if (!mounted) return;
 
@@ -126,6 +136,18 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
       return;
     }
 
+    if (serverReachable) {
+      // Server was reached and explicitly rejected these credentials —
+      // show the real error instead of silently trying the demo list.
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('web_invalid_credentials'.tr()),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     // Fallback: match against hardcoded list (works without server running)
     final user = _users.firstWhere(
       (u) => u['email'] == email && u['password'] == password,
@@ -156,8 +178,8 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Invalid credentials'),
+        SnackBar(
+            content: Text('web_invalid_credentials'.tr()),
             backgroundColor: Colors.red),
       );
     }
@@ -283,7 +305,7 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Government Officer Dashboard',
+                                'web_login_subtitle'.tr(),
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey.shade600,
@@ -298,13 +320,14 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                               // Email Field
                               TextFormField(
                                 controller: _emailController,
+                                autofillHints: const [],
                                 decoration: InputDecoration(
-                                  labelText: 'Email Address',
+                                  labelText: 'email_address'.tr(),
                                   prefixIcon: Icon(
                                     Icons.email_outlined,
                                     color: Colors.grey.shade400,
                                   ),
-                                  hintText: 'Enter your email',
+                                  hintText: 'enter_email_hint'.tr(),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
                                     borderSide: const BorderSide(
@@ -320,7 +343,7 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                                   ),
                                 ),
                                 validator: (v) => v!.isEmpty
-                                    ? 'Please enter your email'
+                                    ? 'web_login_email_required'.tr()
                                     : null,
                               ),
                               const SizedBox(height: 18),
@@ -329,8 +352,9 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
+                                autofillHints: const [],
                                 decoration: InputDecoration(
-                                  labelText: 'Password',
+                                  labelText: 'password'.tr(),
                                   prefixIcon: Icon(
                                     Icons.lock_outline,
                                     color: Colors.grey.shade400,
@@ -350,7 +374,7 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                                       },
                                     ),
                                   ),
-                                  hintText: 'Enter your password',
+                                  hintText: 'web_enter_password_hint'.tr(),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
                                     borderSide: const BorderSide(
@@ -366,7 +390,7 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                                   ),
                                 ),
                                 validator: (v) => v!.isEmpty
-                                    ? 'Please enter your password'
+                                    ? 'web_login_password_required'.tr()
                                     : null,
                               ),
                               const SizedBox(height: 28),
@@ -398,9 +422,9 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
                                             ),
                                           ),
                                         )
-                                      : const Text(
-                                          'Sign In',
-                                          style: TextStyle(
+                                      : Text(
+                                          'sign_in'.tr(),
+                                          style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w700,
                                             letterSpacing: 0.5,
@@ -412,7 +436,7 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
 
                               // Footer Text
                               Text(
-                                'Secure Government Services Platform',
+                                'web_secure_platform_footer'.tr(),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade500,
