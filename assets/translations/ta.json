@@ -28,6 +28,8 @@
   "pending": "நிலுவையில்",
   "confirmed": "உறுதிப்படுத்தப்பட்டது",
   "completed_status": "முடிந்தது",
+  "approved_status": "அங்கீகரிக்கப்பட்டது",
+  "rejected_status": "நிராகரிக்கப்பட்டது",
   "service_coming_soon": "{} சேவைகள் - விரைவில்",
 
   "book_appointment": "நேரடிவு பதிவு",
@@ -158,6 +160,7 @@
   "my_requests_tab": "என் கோரிக்கைகள்",
   "emergency_priority_info": "மருத்துவ அவசர நிலைகள், மூத்த குடிமக்கள் (60+), மாற்றுத் திறனாளிகள் மற்றும் கர்ப்பிணி பெண்களுக்கு முன்னுரிமை வழங்கப்படுகிறது.",
   "select_emergency_type": "அவசர வகையை தேர்ந்தெடுக்கவும்",
+  "select_appointment_for_priority": "முன்பதிவைத் தேர்ந்தெடுக்கவும்",
   "description": "விவரம்",
   "description_hint": "உங்கள் தேவையை சுருக்கமாக விவரிக்கவும்...",
   "submit_emergency_request": "அவசர கோரிக்கை சமர்ப்பிக்கவும்",

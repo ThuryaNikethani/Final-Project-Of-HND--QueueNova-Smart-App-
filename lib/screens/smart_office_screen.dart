@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
 import 'package:queuenova_mobile/services/ml_prediction_service.dart';
 import 'package:queuenova_mobile/services/location_service.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
 
 const Map<String, String> _kCrowdLabelKeys = {
   'Low': 'crowd_level_low',
@@ -118,12 +120,14 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
     },
   ];
 
-  // ML-predicted data per officeId
-  Map<String, QueuePrediction> _predictions = {};
+  // Real queue stats per officeId ({waiting, avgWaitMinutes, crowdLevel, ...}
+  // from the actual Postgres queue_entries table via QueueStatusService).
+  Map<String, Map<String, dynamic>> _queueStats = {};
   // Real GPS distance per officeId (km), populated only when Location Access
   // is on and a position fix succeeds. Falls back to the static string otherwise.
   Map<String, double> _liveDistancesKm = {};
   Timer? _refreshTimer;
+  io.Socket? _socket;
   bool _isLoading = true;
   // 'All' shows every office (unfiltered — the screen's original behavior).
   // Picking a specific service narrows the list to offices that provide it.
@@ -132,17 +136,22 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshPredictions();
+    _refreshQueueStats();
     _refreshLiveDistances();
-    // Refresh ML predictions every 60 seconds
+    // Periodic refresh as a resilience backup — real-time updates normally
+    // arrive instantly via the socket below.
     _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (mounted) _refreshPredictions();
+      if (mounted) _refreshQueueStats();
     });
+    // Live push: refetch the moment any office's queue changes (check-in,
+    // call-next, complete, cancel) instead of waiting for the next poll.
+    _socket = QueueStatusService.connect(onQueueChanged: _refreshQueueStats);
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _socket?.dispose();
     super.dispose();
   }
 
@@ -165,29 +174,26 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
     setState(() => _liveDistancesKm = distances);
   }
 
-  Future<void> _refreshPredictions() async {
-    final now = DateTime.now();
+  Future<void> _refreshQueueStats() async {
     final officeIds = _staticOffices.map((o) => o['officeId'] as String).toList();
-    // Live backend data (trained ML model, falling back to real DB queue
-    // counts, falling back to the on-device statistical model) instead of
-    // the pure offline formula — same QueuePrediction shape either way, so
-    // nothing downstream of _predictions needs to change.
-    final results = await MLPredictionService.fetchAndPredictAll(
-      officeNames: officeIds,
-      time: now,
+    // Real queue stats straight from Postgres queue_entries — waiting count,
+    // today's real avg wait, and crowd level bucketed from the real count.
+    final results = await Future.wait(
+      officeIds.map((id) => QueueStatusService.getOfficeStats(id)),
     );
     if (!mounted) return;
     setState(() {
-      _predictions = {for (final r in results) r.officeName: r.prediction};
+      _queueStats = {for (var i = 0; i < officeIds.length; i++) officeIds[i]: results[i]};
       _isLoading = false;
     });
   }
 
   // Build the merged office map the way the original code expected it
   List<Map<String, dynamic>> get _offices {
+    final closed = MLPredictionService.isHolidayOrClosed(DateTime.now());
     return _staticOffices.map((static_) {
       final id = static_['officeId'] as String;
-      final pred = _predictions[id];
+      final stats = _queueStats[id];
       final liveKm = _liveDistancesKm[id];
       // Numeric km for the "which office is nearest" comparison — from live
       // GPS when available, else parsed off the static fallback label (e.g.
@@ -196,6 +202,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       final double distanceKm = liveKm ??
           double.tryParse((static_['distance'] as String).split(' ').first) ??
           double.infinity;
+      final avgWait = stats?['avgWaitMinutes'] as num?;
       return {
         'name': static_['name'],
         'address': static_['address'],
@@ -203,8 +210,11 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
         'distanceKm': distanceKm,
         'officeId': id,
         'type': static_['type'],
-        'crowd': pred?.crowdLevel.label ?? 'Low',
-        'waitMinutes': pred?.estimatedWaitMinutes,
+        // Real crowd level from the actual waiting count (bucketed
+        // server-side), 'Closed' when outside operating hours/holidays.
+        // No synthetic fallback — an empty office honestly shows Low/0.
+        'crowd': closed ? 'Closed' : (stats?['crowdLevel'] as String? ?? 'Low'),
+        'waitMinutes': closed ? null : avgWait?.round(),
       };
     }).toList();
   }

@@ -20,6 +20,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
   final List<String> offices = [
     'Divisional Secretariat - Colombo',
+    'Divisional Secretariat - Nugegoda',
     'Divisional Secretariat - Kandy',
     'Divisional Secretariat - Galle',
     'Divisional Secretariat - Kurunegala',

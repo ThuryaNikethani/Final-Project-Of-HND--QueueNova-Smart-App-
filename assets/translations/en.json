@@ -28,6 +28,8 @@
   "pending": "Pending",
   "confirmed": "Confirmed",
   "completed_status": "Completed",
+  "approved_status": "Approved",
+  "rejected_status": "Rejected",
   "service_coming_soon": "{} Services - Coming Soon",
 
   "book_appointment": "Book Appointment",
@@ -158,6 +160,7 @@
   "my_requests_tab": "My Requests",
   "emergency_priority_info": "Priority is given to medical emergencies, senior citizens (60+), persons with disabilities, and pregnant women.",
   "select_emergency_type": "Select Emergency Type",
+  "select_appointment_for_priority": "Select Appointment",
   "description": "Description",
   "description_hint": "Briefly describe your requirement...",
   "submit_emergency_request": "Submit Emergency Request",

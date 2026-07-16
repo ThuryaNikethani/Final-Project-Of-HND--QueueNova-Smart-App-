@@ -821,7 +821,77 @@ class _DashboardHomeState extends State<DashboardHome> {
       'time': _relativeTime(createdAt?.toDate()),
       'read': readBy.contains(widget.staffId),
       'dismissed': dismissedBy.contains(widget.staffId),
+      'service': data['service'],
+      'office': data['office'],
+      'datetime': data['datetime'],
+      'token': data['token'],
+      'counter': data['counter'],
+      'waitTime': data['waitTime'],
+      'ahead': data['ahead'],
+      'docName': data['docName'],
+      'docStatus': data['docStatus'],
+      'uploadedBy': data['uploadedBy'],
+      'submittedOn': data['submittedOn'],
+      'nic': data['nic'] as String?,
     };
+  }
+
+  /// Notifies the citizen identified by [nic] via the `notifications`
+  /// collection the citizen app's Notifications screen reads live, looking
+  /// the uid up through `nic_index` (same lookup login/service-processing use).
+  Future<void> _notifyCitizenByNic(String? nic, String title, String message) async {
+    if (nic == null || nic.isEmpty) return;
+    try {
+      final indexDoc = await FirebaseFirestore.instance.collection('nic_index').doc(nic.toUpperCase()).get();
+      final uid = indexDoc.data()?['uid'] as String?;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'uid': uid,
+        'title': title,
+        'message': message,
+        'type': 'queue',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _archiveNotification(String id) async {
+    await FirebaseFirestore.instance.collection('staff_notifications').doc(id).set({
+      'dismissedBy': FieldValue.arrayUnion([widget.staffId]),
+    }, SetOptions(merge: true));
+  }
+
+  /// Approves or rejects a citizen's priority-queue request: flips
+  /// `is_priority` on their queue entry via the backend, tells the citizen
+  /// the outcome, and archives the request so it stops showing as pending.
+  /// Also records the outcome as `resolution` (approved/rejected) — read by
+  /// `emergency_queue_screen.dart`'s "My Requests" tab so it can distinguish
+  /// a rejected request from an approved one instead of just "resolved".
+  /// Mirrors `web_notifications.dart`'s `_resolvePriorityRequest`.
+  Future<void> _resolvePriorityRequest(Map<String, dynamic> notif, bool approve) async {
+    final token = notif['token'] as String?;
+    if (token != null) {
+      await WebApiService.setQueuePriority(token, approve, officerName: widget.staffId);
+    }
+    await _notifyCitizenByNic(
+      notif['nic'] as String?,
+      approve ? 'Priority Request Approved' : 'Priority Request Declined',
+      approve
+          ? 'Your priority queue request for token $token has been approved.'
+          : 'Your priority queue request for token $token was not approved.',
+    );
+    await FirebaseFirestore.instance.collection('staff_notifications').doc(notif['id'] as String).set({
+      'resolution': approve ? 'approved' : 'rejected',
+    }, SetOptions(merge: true));
+    await _archiveNotification(notif['id'] as String);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(approve ? 'Priority request approved' : 'Priority request rejected'),
+        backgroundColor: approve ? Colors.green : Colors.grey,
+      ),
+    );
   }
 
   String _relativeTime(DateTime? time) {
@@ -1186,35 +1256,64 @@ class _DashboardHomeState extends State<DashboardHome> {
                         _buildDetailRow('web_detail_submitted_on'.tr(), notif['submittedOn']),
                       ],
                       const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            if (notif['action'] == 'View Appointment') {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        WebAppointments(userRole: widget.userRole, staffId: widget.staffId)),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'web_action_coming_soon'.tr(args: [notif['action']])),
-                                    backgroundColor: const Color(0xFF1A56DB)),
-                              );
-                            }
-                          },
-                          icon: Icon(_getActionIcon(notif['action'])),
-                          label: Text(notif['action']),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A56DB),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                      if (notif['type'] == 'priority_request')
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _resolvePriorityRequest(notif, false);
+                                },
+                                icon: const Icon(Icons.close),
+                                label: const Text('Reject'),
+                                style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _resolvePriorityRequest(notif, true);
+                                },
+                                icon: const Icon(Icons.check_circle),
+                                label: const Text('Approve'),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              if (notif['action'] == 'View Appointment') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          WebAppointments(userRole: widget.userRole, staffId: widget.staffId)),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'web_action_coming_soon'.tr(args: [notif['action']])),
+                                      backgroundColor: const Color(0xFF1A56DB)),
+                                );
+                              }
+                            },
+                            icon: Icon(_getActionIcon(notif['action'])),
+                            label: Text(notif['action']),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1A56DB),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1226,7 +1325,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1237,7 +1336,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                 style: const TextStyle(fontSize: 13, color: Colors.grey)),
           ),
           Expanded(
-            child: Text(value,
+            child: Text(value == null ? '—' : value.toString(),
                 style:
                     const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
           ),

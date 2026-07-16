@@ -76,22 +76,44 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
   }
 
+  // AppointmentModel.date is always midnight of the appointment day; the
+  // actual time lives in the separate `time` field (e.g. "2:31 PM"). Combines
+  // them into one real DateTime so same-day appointments can be compared
+  // against `now` precisely. Returns null if `time` doesn't parse (falls back
+  // to day-only comparison for that entry).
+  DateTime? _appointmentDateTime(AppointmentModel b) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$').firstMatch(b.time.trim());
+    if (match == null) return null;
+    var hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final period = match.group(3)?.toUpperCase();
+    if (period == 'PM' && hour != 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    return DateTime(b.date.year, b.date.month, b.date.day, hour, minute);
+  }
+
+  // Day-level for other days (a future day is upcoming regardless of its time
+  // slot, a past day is past regardless of its time slot) but time-level for
+  // today, so a same-day appointment flips to "Past" the moment its actual
+  // slot elapses instead of only at midnight.
+  bool _isPastAppointment(AppointmentModel b, DateTime now, DateTime today) {
+    if (b.date.isBefore(today)) return true;
+    if (b.date.isAfter(today)) return false;
+    final dt = _appointmentDateTime(b);
+    return dt != null && dt.isBefore(now);
+  }
+
   List<AppointmentModel> get filteredBookings {
-    // Compare by calendar day, not exact clock time — AppointmentModel.date
-    // is always midnight of the appointment day (the actual time lives in
-    // the separate `time` field), so comparing against DateTime.now()
-    // directly would mark today's not-yet-happened appointment as "Past"
-    // the moment midnight ticks over.
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     if (selectedFilter == 'Upcoming') {
       return appointments.where((b) =>
-        !b.date.isBefore(today) &&
+        !_isPastAppointment(b, now, today) &&
         (b.status == 'Confirmed' || b.status == 'Pending')
       ).toList();
     } else if (selectedFilter == 'Past') {
       return appointments.where((b) =>
-        b.date.isBefore(today) || b.status == 'Completed'
+        _isPastAppointment(b, now, today) || b.status == 'Completed'
       ).toList();
     } else {
       return appointments.where((b) => b.status == 'Cancelled').toList();
@@ -291,8 +313,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
                           itemCount: bookings.length,
                           itemBuilder: (context, index) {
                             final booking = bookings[index];
-                            final today = DateTime.now();
-                            final isUpcoming = !booking.date.isBefore(DateTime(today.year, today.month, today.day));
+                            final now = DateTime.now();
+                            final today = DateTime(now.year, now.month, now.day);
+                            final isUpcoming = !_isPastAppointment(booking, now, today);
                             final isPending = booking.status == 'Pending';
                             
                             return Container(

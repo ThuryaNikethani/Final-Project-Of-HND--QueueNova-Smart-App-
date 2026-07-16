@@ -28,6 +28,8 @@
   "pending": "රැඳී ඇත",
   "confirmed": "තහවුරු කළා",
   "completed_status": "සම්පූර්ණ",
+  "approved_status": "අනුමත කරන ලදී",
+  "rejected_status": "ප්‍රතික්ෂේප කරන ලදී",
   "service_coming_soon": "{} සේවා - ඉදිරියේදී",
 
   "book_appointment": "වෙන්කිරීම් කරන්න",
@@ -158,6 +160,7 @@
   "my_requests_tab": "මගේ ඉල්ලීම්",
   "emergency_priority_info": "වෛද්‍ය හදිසි, 60+ ජ්‍යේෂ්ඨ, ආබාධිත, ගර්භිණී සඳහා ප්‍රමුඛතාව ලැබේ.",
   "select_emergency_type": "හදිසි වර්ගය තෝරන්න",
+  "select_appointment_for_priority": "වෙන්කිරීම තෝරන්න",
   "description": "විස්තරය",
   "description_hint": "ඔබේ අවශ්‍යතාවය කෙටියෙන් විස්තර කරන්න...",
   "submit_emergency_request": "හදිසි ඉල්ලීම ඉදිරිපත් කරන්න",

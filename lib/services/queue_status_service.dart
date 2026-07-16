@@ -31,6 +31,46 @@ class QueueStatusService {
     return {'found': false};
   }
 
+  /// All of this citizen's currently active (waiting/serving) queue entries —
+  /// unlike [getMyQueuePosition], which only returns the single most recent
+  /// one. Needed when a citizen has more than one appointment checked in at
+  /// once (e.g. two different services), so callers can let them pick which
+  /// entry they mean instead of silently guessing. Returns `[]` on failure.
+  static Future<List<Map<String, dynamic>>> getMyQueuePositions(String nic) async {
+    if (nic.isEmpty) return [];
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/queue/positions/${Uri.encodeComponent(nic)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return (data['positions'] as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getMyQueuePositions error: $e');
+    }
+    return [];
+  }
+
+  /// A single queue entry by token, any status (not just waiting/serving) —
+  /// used to backfill the approved/rejected outcome onto old priority
+  /// requests by checking what `isPriority` ended up as. Returns `{found:
+  /// false}` if the token doesn't exist or the request fails.
+  static Future<Map<String, dynamic>> getQueueEntry(String token) async {
+    if (token.isEmpty) return {'found': false};
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/api/queue/entry/${Uri.encodeComponent(token)}'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('QueueStatusService.getQueueEntry error: $e');
+    }
+    return {'found': false};
+  }
+
   /// Office-wide queue stats (waiting/serving counts, the token currently
   /// being served, average wait) from the same endpoint the officer's Queue
   /// Management dashboard uses. Returns `{}` on failure.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
 import 'web_role_model.dart';
 import 'web_api_service.dart';
 
@@ -26,6 +27,7 @@ class WebNotifications extends StatefulWidget {
 
 class _WebNotificationsState extends State<WebNotifications> {
   bool _loading = true;
+  bool _backfilling = false;
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<QuerySnapshot>? _sub;
 
@@ -145,6 +147,9 @@ class _WebNotificationsState extends State<WebNotifications> {
   /// Approves or rejects a citizen's priority-queue request: flips
   /// `is_priority` on their queue entry via the backend, tells the citizen
   /// the outcome, and archives the request so it stops showing as pending.
+  /// Also records the outcome as `resolution` (approved/rejected) — read by
+  /// `emergency_queue_screen.dart`'s "My Requests" tab so it can distinguish
+  /// a rejected request from an approved one instead of just "resolved".
   Future<void> _resolvePriorityRequest(Map<String, dynamic> notif, bool approve) async {
     final token = notif['token'] as String?;
     if (token != null) {
@@ -157,12 +162,62 @@ class _WebNotificationsState extends State<WebNotifications> {
           ? 'Your priority queue request for token $token has been approved.'
           : 'Your priority queue request for token $token was not approved.',
     );
+    await FirebaseFirestore.instance.collection('staff_notifications').doc(notif['id'] as String).set({
+      'resolution': approve ? 'approved' : 'rejected',
+    }, SetOptions(merge: true));
     await _archive(notif['id'] as String);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(approve ? 'Priority request approved' : 'Priority request rejected'),
         backgroundColor: approve ? Colors.green : Colors.grey,
+      ),
+    );
+  }
+
+  /// One-time maintenance action: priority requests resolved before the
+  /// `resolution` field existed have no recorded approved/rejected outcome,
+  /// so the citizen's "My Requests" tab can only show them as generic
+  /// "Completed". This finds those old requests and infers the real outcome
+  /// from the current `is_priority` value on their queue entry (set at
+  /// approval time and never reset), backfilling `resolution` so they display
+  /// correctly. Requests whose queue entry no longer exists are left as-is —
+  /// there's nothing left to infer the outcome from.
+  Future<void> _backfillResolutions() async {
+    setState(() => _backfilling = true);
+    var updated = 0;
+    var skipped = 0;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('staff_notifications')
+          .where('type', isEqualTo: 'priority_request')
+          .get();
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final dismissedBy = (data['dismissedBy'] as List?) ?? const [];
+        final token = data['token'] as String?;
+        if (dismissedBy.isEmpty || data['resolution'] != null || token == null) continue;
+        final entry = await QueueStatusService.getQueueEntry(token);
+        if (entry['found'] != true) {
+          skipped++;
+          continue;
+        }
+        await doc.reference.set({
+          'resolution': entry['isPriority'] == true ? 'approved' : 'rejected',
+        }, SetOptions(merge: true));
+        updated++;
+      }
+    } catch (_) {
+      // Leave whatever was already updated in place; report what happened below.
+    }
+    if (!mounted) return;
+    setState(() => _backfilling = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(skipped > 0
+            ? 'Updated $updated old request(s); $skipped could not be determined.'
+            : 'Updated $updated old request(s).'),
+        backgroundColor: const Color(0xFF1A56DB),
       ),
     );
   }
@@ -190,6 +245,17 @@ class _WebNotificationsState extends State<WebNotifications> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: _backfilling
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.history_toggle_off),
+            tooltip: 'Fix old priority requests still showing as "Completed"',
+            onPressed: _backfilling ? null : _backfillResolutions,
+          ),
           if (unreadCount > 0)
             TextButton(
               onPressed: _markAllAsRead,

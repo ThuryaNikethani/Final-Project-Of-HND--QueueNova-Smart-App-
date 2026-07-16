@@ -219,6 +219,10 @@ class AppointmentService {
         'targetRoles': const ['reception'],
         'readBy': <String>[],
         'dismissedBy': <String>[],
+        'service': appointment.service,
+        'office': appointment.office,
+        'datetime': '$dateStr ${appointment.time}',
+        'token': appointment.token,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -394,6 +398,7 @@ class AppointmentService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final name = prefs.getString('userName') ?? 'A citizen';
+      final dateStr = '${appointment.date.day}/${appointment.date.month}/${appointment.date.year}';
       await _db.collection('staff_notifications').add({
         'title': 'Appointment $status',
         'message': '$name\'s ${appointment.service} appointment (Token ${appointment.token}) is now $status.',
@@ -402,6 +407,10 @@ class AppointmentService {
         'targetRoles': const ['reception'],
         'readBy': <String>[],
         'dismissedBy': <String>[],
+        'service': appointment.service,
+        'office': appointment.office,
+        'datetime': '$dateStr ${appointment.time}',
+        'token': appointment.token,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {

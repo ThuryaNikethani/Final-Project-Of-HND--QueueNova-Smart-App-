@@ -20,9 +20,32 @@ class WebReception extends StatefulWidget {
 }
 
 class _WebReceptionState extends State<WebReception> {
-  // Reception has a single front desk (no office selector like Queue
-  // Management), so check-ins are recorded against this office.
-  static const String _receptionOffice = 'Divisional Secretariat - Colombo';
+  // The office the reception officer is currently working at. Determines
+  // which office's queue/stats/appointments are shown and which office's QR
+  // codes will match during check-in — same office list as Queue Management.
+  String selectedOffice = 'Divisional Secretariat - Colombo';
+
+  final List<String> offices = [
+    'Divisional Secretariat - Colombo',
+    'Divisional Secretariat - Nugegoda',
+    'Divisional Secretariat - Kandy',
+    'Divisional Secretariat - Galle',
+    'Divisional Secretariat - Kurunegala',
+    'RMV - Werahera',
+    'RMV - Kiribathgoda',
+    'RMV - Kandy',
+    'Passport Office - Battaramulla',
+    'Passport Office - Kandy',
+    'Department of Registration - Colombo',
+    'NIC Service Center - Colombo',
+    'NIC Service Center - Kandy',
+    'Immigration Department - Battaramulla',
+    'Land Registry Office - Colombo',
+    'Land Registry Office - Kandy',
+    'Municipal Council - Colombo',
+    'Municipal Council - Kandy',
+    'Registrar General Department - Colombo',
+  ];
 
   bool isScanning = false;
   String scannedData = '';
@@ -75,7 +98,7 @@ class _WebReceptionState extends State<WebReception> {
   }
 
   Future<void> _loadReceptionStats() async {
-    final stats = await WebApiService.getReceptionStats(_receptionOffice);
+    final stats = await WebApiService.getReceptionStats(selectedOffice);
     if (!mounted || stats == null) return;
     setState(() {
       activeQueueCount = stats['activeQueue'] as int? ?? activeQueueCount;
@@ -89,7 +112,7 @@ class _WebReceptionState extends State<WebReception> {
   /// check-in — both live in the same real queue, this just filters the
   /// office's live queue down to the walk-in subset for display here.
   Future<void> _loadWalkInsFromApi() async {
-    final rows = await WebApiService.getQueue(_receptionOffice);
+    final rows = await WebApiService.getQueue(selectedOffice);
     if (!mounted) return;
     final walkIns = rows.where((r) => (r['token']?.toString() ?? '').startsWith('W-')).toList();
     setState(() {
@@ -122,9 +145,8 @@ class _WebReceptionState extends State<WebReception> {
     final todayStr = '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final todays = rows
         .where((r) => (r['date']?.toString() ?? '').startsWith(todayStr))
-        .where((r) => (r['office']?.toString() ?? '') == _receptionOffice)
+        .where((r) => (r['office']?.toString() ?? '') == selectedOffice)
         .toList();
-    if (todays.isEmpty) return;
     setState(() {
       todayAppointments = todays.map((r) => {
         'id': r['id'],
@@ -230,7 +252,7 @@ class _WebReceptionState extends State<WebReception> {
       );
       WebApiService.addToQueue(
         token: appointment['token'] as String,
-        officeId: _receptionOffice,
+        officeId: selectedOffice,
         citizenName: appointment['citizen'] as String,
         citizenNic: appointment['nic'] as String?,
         service: appointment['service'] as String,
@@ -390,7 +412,7 @@ class _WebReceptionState extends State<WebReception> {
                 Navigator.pop(dialogContext);
                 await WebApiService.addToQueue(
                   token: token,
-                  officeId: _receptionOffice,
+                  officeId: selectedOffice,
                   citizenName: name,
                   citizenNic: nic.isNotEmpty ? nic : null,
                   service: selectedService,
@@ -487,6 +509,31 @@ class _WebReceptionState extends State<WebReception> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedOffice,
+                  isExpanded: true,
+                  items: offices.map((office) {
+                    return DropdownMenuItem(value: office, child: Text(office));
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => selectedOffice = value);
+                    _loadReceptionStats();
+                    _loadWalkInsFromApi();
+                    _loadAppointmentsFromApi();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
                 _buildStatCard('web_active_queue'.tr(), '$activeQueueCount', Icons.queue, Colors.blue,
@@ -741,7 +788,7 @@ class _WebReceptionState extends State<WebReception> {
                                                     );
                                                     WebApiService.addToQueue(
                                                       token: apt['token'] as String,
-                                                      officeId: _receptionOffice,
+                                                      officeId: selectedOffice,
                                                       citizenName: apt['citizen'] as String,
                                                       citizenNic: apt['nic'] as String?,
                                                       service: apt['service'] as String,

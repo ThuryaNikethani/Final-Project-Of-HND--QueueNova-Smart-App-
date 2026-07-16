@@ -24,6 +24,12 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
   String? _myOfficeId;
   bool _loadingPosition = true;
 
+  // All of the citizen's currently active (waiting/serving) queue entries —
+  // there can be more than one if she has multiple appointments checked in
+  // at once, so she needs to pick which one the priority request is for.
+  List<Map<String, dynamic>> _myActivePositions = [];
+  Map<String, dynamic>? _selectedPosition;
+
   final List<Map<String, dynamic>> types = [
     {
       'name': 'medical_emergency',
@@ -67,13 +73,19 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
     final prefs = await SharedPreferences.getInstance();
     _myNic = prefs.getString('userNIC');
     _myName = prefs.getString('userName');
-    final position = await QueueStatusService.getMyQueuePosition(_myNic ?? '');
+    final positions = await QueueStatusService.getMyQueuePositions(_myNic ?? '');
     if (!mounted) return;
     setState(() {
-      _myToken = position['found'] == true ? position['token'] as String? : null;
-      _myOfficeId = position['found'] == true ? position['officeId'] as String? : null;
+      _myActivePositions = positions;
+      _selectPosition(positions.isNotEmpty ? positions.first : null);
       _loadingPosition = false;
     });
+  }
+
+  void _selectPosition(Map<String, dynamic>? position) {
+    _selectedPosition = position;
+    _myToken = position?['token'] as String?;
+    _myOfficeId = position?['officeId'] as String?;
   }
 
   /// Sends the emergency request to staff via the same `staff_notifications`
@@ -244,6 +256,50 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
               ),
             ),
           ],
+          if (_myActivePositions.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('select_appointment_for_priority'.tr(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.offWhite,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedPosition?['token'] as String?,
+                  isExpanded: true,
+                  icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryBlue),
+                  items: _myActivePositions.map((position) {
+                    final token = position['token'] as String? ?? '';
+                    final service = position['service'] as String? ?? '';
+                    final officeId = position['officeId'] as String? ?? '';
+                    return DropdownMenuItem(
+                      value: token,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(service.isNotEmpty ? service : token,
+                              style: const TextStyle(fontWeight: FontWeight.w500)),
+                          Text('$officeId • ${'token_label'.tr(args: [token])}',
+                              style: TextStyle(fontSize: 11, color: AppColors.grey)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (token) {
+                    final position = _myActivePositions.firstWhere(
+                      (p) => p['token'] == token,
+                      orElse: () => _myActivePositions.first,
+                    );
+                    setState(() => _selectPosition(position));
+                  },
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('select_emergency_type'.tr(),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -355,17 +411,25 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
       return _buildEmptyHistory();
     }
     return StreamBuilder<QuerySnapshot>(
+      // Sorted client-side (rather than orderBy in the query) to avoid needing
+      // a Firestore composite index for a two-equality-filter + orderBy combination,
+      // same reasoning as web_notifications.dart.
       stream: FirebaseFirestore.instance
           .collection('staff_notifications')
           .where('nic', isEqualTo: _myNic)
           .where('type', isEqualTo: 'priority_request')
-          .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        final docs = snapshot.data?.docs ?? [];
+        final docs = snapshot.data?.docs.toList() ?? [];
+        docs.sort((a, b) {
+          final aTime = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          final bTime = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
         if (docs.isEmpty) {
           return _buildEmptyHistory();
         }
@@ -374,8 +438,6 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            final dismissedBy = (data['dismissedBy'] as List?) ?? const [];
-            final resolved = dismissedBy.isNotEmpty;
             final createdAt = data['createdAt'] as Timestamp?;
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -397,22 +459,7 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                       ),
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: (resolved ? AppColors.success : AppColors.warning).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          resolved ? 'completed_status'.tr() : 'pending'.tr(),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: resolved ? AppColors.success : AppColors.warning,
-                          ),
-                        ),
-                      ),
+                      _statusBadge(data),
                     ],
                   ),
                   if (createdAt != null) ...[
@@ -428,6 +475,61 @@ class _EmergencyQueueScreenState extends State<EmergencyQueueScreen> {
           },
         );
       },
+    );
+  }
+
+  // Pending/Approved/Rejected status for one "My Requests" entry. Checks the
+  // `resolution` field first (written by the officer at approve/reject time)
+  // and only falls back to asking the backend directly — via the same
+  // token-lookup used for the officer-side backfill — when that field isn't
+  // there yet (e.g. an older build of the officer dashboard). This way the
+  // label is correct here regardless of whether the officer dashboard has
+  // been rebuilt with the latest code.
+  Widget _statusBadge(Map<String, dynamic> data) {
+    final dismissedBy = (data['dismissedBy'] as List?) ?? const [];
+    final resolution = data['resolution'] as String?;
+    final token = data['token'] as String?;
+
+    if (dismissedBy.isEmpty) {
+      return _statusChip('pending'.tr(), AppColors.warning);
+    }
+    if (resolution == 'approved') {
+      return _statusChip('approved_status'.tr(), AppColors.success);
+    }
+    if (resolution == 'rejected') {
+      return _statusChip('rejected_status'.tr(), AppColors.error);
+    }
+    if (token == null) {
+      return _statusChip('completed_status'.tr(), AppColors.success);
+    }
+    return FutureBuilder<Map<String, dynamic>>(
+      future: QueueStatusService.getQueueEntry(token),
+      builder: (context, snapshot) {
+        final entry = snapshot.data;
+        if (entry == null || entry['found'] != true) {
+          return _statusChip('completed_status'.tr(), AppColors.success);
+        }
+        final approved = entry['isPriority'] == true;
+        return _statusChip(
+          approved ? 'approved_status'.tr() : 'rejected_status'.tr(),
+          approved ? AppColors.success : AppColors.error,
+        );
+      },
+    );
+  }
+
+  Widget _statusChip(String label, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+      ),
     );
   }
 
