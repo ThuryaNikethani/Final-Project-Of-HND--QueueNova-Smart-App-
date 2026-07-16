@@ -668,7 +668,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           children: [
             const Icon(Icons.check_circle, color: AppColors.success),
             const SizedBox(width: 10),
-            Text('appointment_confirmed'.tr()),
+            Text('request_submitted'.tr()),
           ],
         ),
         content: Column(
@@ -755,9 +755,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
             ),
             const SizedBox(height: 15),
-            Text('qr_code_generated_note'.tr()),
-            const SizedBox(height: 8),
-            Text('show_qr_checkin_payment'.tr()),
+            Text('pending_approval'.tr()),
           ],
         ),
         actions: [
@@ -829,7 +827,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         date: selectedDate,
         time: selectedTime.format(context),
         token: tokenNumber,
-        status: 'Confirmed',
+        status: 'Pending',
         qrData: qrData,
         paymentStatus: selectedPaymentMethod == 'Pay Online' ? 'paid' : 'pending',
         feeAmount: _selectedFee,

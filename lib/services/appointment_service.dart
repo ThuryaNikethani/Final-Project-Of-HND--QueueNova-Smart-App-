@@ -130,11 +130,21 @@ class AppointmentService {
   static Stream<List<AppointmentModel>> watchAppointments() {
     late final StreamController<List<AppointmentModel>> controller;
     socket_io.Socket? socket;
+    int requestId = 0;
 
+    // Guards against out-of-order fetches: e.g. the initial on-listen fetch
+    // is still in flight when a fresh booking fires the `appointment_update`
+    // socket event and its own (faster) fetch resolves first — without this,
+    // the slower initial fetch would land last and overwrite the just-booked
+    // appointment with stale data.
     Future<void> emitLatest() async {
+      final id = ++requestId;
       try {
-        controller.add(await getAppointments());
+        final data = await getAppointments();
+        if (id != requestId) return;
+        controller.add(data);
       } catch (e) {
+        if (id != requestId) return;
         controller.addError(e);
       }
     }
@@ -305,6 +315,22 @@ class AppointmentService {
       } catch (e) {
         debugPrint('Firestore updateStatus failed: $e');
       }
+    }
+
+    // Reads (getAppointments/watchAppointments) come from Postgres, not
+    // Firestore or the local cache — without this, the status above never
+    // reaches the source of truth, so the very next re-fetch (e.g. the one
+    // `_cancelBooking` triggers right after this call) silently reverts it.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('userName') ?? '';
+      await http.put(
+        Uri.parse('${BackendConfig.baseUrl}/api/web/appointments/$id/status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': status, 'updatedBy': name}),
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('Postgres updateAppointmentStatus failed: $e');
     }
 
     if (appointment != null) {

@@ -117,7 +117,12 @@ SATISFACTION_FEATURES = [
 def _encode(df_main, df_demand):
     """Fit label encoders on main dataset and apply to both DataFrames."""
     le_office   = LabelEncoder().fit(df_main['office_type'])
-    le_district = LabelEncoder().fit(df_main['district'])
+    # Fit on every district in the country, not just the ones with an office
+    # in OFFICES — generate_no_show_dataset/generate_abandonment_dataset
+    # (Step 7) sample districts from the full DISTRICT_POP list, and would
+    # otherwise raise "previously unseen labels" for any district without
+    # a physical office (e.g. Batticaloa).
+    le_district = LabelEncoder().fit(sorted(DISTRICT_POP.keys()))
     le_service  = LabelEncoder().fit(
         pd.concat([df_main['service_type'], df_demand['service_type']])
     )

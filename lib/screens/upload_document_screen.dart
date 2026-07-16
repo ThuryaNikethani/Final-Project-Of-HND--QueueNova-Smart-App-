@@ -40,7 +40,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
   bool get isWeb => kIsWeb;
 
-  Future<void> _showUploadOptions() async {
+  Future<void> _showUploadOptions([String? presetCategory]) async {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -63,19 +63,19 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   icon: Icons.photo_library,
                   label: 'gallery_label'.tr(),
                   color: AppColors.primaryBlue,
-                  onTap: () => _pickImage(ImageSource.gallery),
+                  onTap: () => _pickImage(ImageSource.gallery, presetCategory),
                 ),
                 _buildUploadOption(
                   icon: Icons.camera_alt,
                   label: 'camera_label'.tr(),
                   color: AppColors.success,
-                  onTap: () => _pickImage(ImageSource.camera),
+                  onTap: () => _pickImage(ImageSource.camera, presetCategory),
                 ),
                 _buildUploadOption(
                   icon: Icons.insert_drive_file,
                   label: 'file_label'.tr(),
                   color: AppColors.warning,
-                  onTap: () => _pickFile(),
+                  onTap: () => _pickFile(presetCategory),
                 ),
               ],
             ),
@@ -137,7 +137,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     );
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage(ImageSource source, [String? presetCategory]) async {
     try {
       setState(() => isUploading = true);
 
@@ -153,7 +153,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       );
 
       if (file != null) {
-        await _uploadFile(file);
+        await _uploadFile(file, presetCategory);
       } else {
         setState(() => isUploading = false);
       }
@@ -171,7 +171,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     }
   }
 
-  Future<void> _pickFile() async {
+  Future<void> _pickFile([String? presetCategory]) async {
     try {
       setState(() => isUploading = true);
 
@@ -182,7 +182,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       );
 
       if (file != null) {
-        await _uploadFile(file);
+        await _uploadFile(file, presetCategory);
       } else {
         setState(() => isUploading = false);
       }
@@ -200,25 +200,80 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     }
   }
 
-  Future<void> _uploadFile(XFile file) async {
-    await Future.delayed(const Duration(seconds: 1));
-
-    final newDoc = DocumentModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: file.name,
-      type: file.path.split('.').last.toUpperCase(),
-      url: file.path,
-      uploadDate: DateTime.now(),
-      sharedWith: [],
+  // "Other" doesn't say what the document actually is, unlike NIC/Passport/
+  // License/Birth — ask the citizen to label it so the vault entry means
+  // something later instead of just showing a generic filename.
+  Future<String?> _promptOtherDescription() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('document_description_prompt_title'.tr()),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(hintText: 'document_description_hint'.tr()),
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: Text('cancel'.tr()),
+            ),
+            TextButton(
+              onPressed: controller.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(context, controller.text.trim()),
+              child: Text('upload_document'.tr()),
+            ),
+          ],
+        ),
+      ),
     );
-    await DocumentVaultService.addDocument(newDoc);
+  }
+
+  Future<void> _uploadFile(XFile file, [String? presetCategory]) async {
+    final category = presetCategory ?? _detectCategory(file.name);
+
+    String? description;
+    if (category == 'Other') {
+      if (!mounted) return;
+      description = await _promptOtherDescription();
+      if (description == null) {
+        // Citizen cancelled the description prompt — abort the upload
+        // rather than silently saving an unlabeled "Other" document.
+        setState(() => isUploading = false);
+        return;
+      }
+    }
+
+    // Uploads straight to the backend now (not a local blob: URL) so the
+    // document has a real, permanent URL that survives page reloads and
+    // works identically on web and mobile.
+    final newDoc = await DocumentVaultService.uploadDocument(file, category, description: description);
+
+    if (!mounted) return;
+
+    if (newDoc == null) {
+      setState(() => isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('document_upload_failed'.tr()),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       uploadedDocs.insert(0, {
-        'name': file.name,
-        'type': file.path.split('.').last.toUpperCase(),
-        'date': DateTime.now(),
-        'category': _detectCategory(file.name),
+        'name': newDoc.name,
+        'type': newDoc.type,
+        'date': newDoc.uploadDate,
+        'category': newDoc.category,
       });
       isUploading = false;
     });
@@ -376,13 +431,13 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               childAspectRatio: 0.9,
               children: [
                 _buildQuickUploadItem(
-                    Icons.badge, 'nic_category'.tr(), const Color(0xFF1A56DB)),
+                    Icons.badge, 'nic_category'.tr(), const Color(0xFF1A56DB), 'NIC'),
                 _buildQuickUploadItem(
-                    Icons.airplane_ticket, 'passport'.tr(), const Color(0xFF10B981)),
+                    Icons.airplane_ticket, 'passport'.tr(), const Color(0xFF10B981), 'Passport'),
                 _buildQuickUploadItem(
-                    Icons.directions_car, 'category_license'.tr(), const Color(0xFFF59E0B)),
+                    Icons.directions_car, 'category_license'.tr(), const Color(0xFFF59E0B), 'License'),
                 _buildQuickUploadItem(
-                    Icons.description, 'category_other'.tr(), const Color(0xFF8B5CF6)),
+                    Icons.description, 'category_other'.tr(), const Color(0xFF8B5CF6), 'Other'),
               ],
             ),
             const SizedBox(height: 24),
@@ -500,10 +555,14 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    '${doc['type']} • ${_formatDate(doc['date'])}',
-                                    style: TextStyle(
-                                        fontSize: 11, color: AppColors.grey),
+                                  Flexible(
+                                    child: Text(
+                                      '${doc['type']} • ${_formatDate(doc['date'])}',
+                                      style: TextStyle(
+                                          fontSize: 11, color: AppColors.grey),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -557,9 +616,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     );
   }
 
-  Widget _buildQuickUploadItem(IconData icon, String label, Color color) {
+  Widget _buildQuickUploadItem(IconData icon, String label, Color color, String category) {
     return GestureDetector(
-      onTap: () => _showUploadOptions(),
+      onTap: () => _showUploadOptions(category),
       child: Column(
         children: [
           Container(

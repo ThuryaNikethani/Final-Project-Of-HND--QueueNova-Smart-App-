@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/backend_config.dart';
 
@@ -482,11 +481,6 @@ class MLPredictionService {
     required String officeName,
     DateTime? time,
   }) async {
-    if (kIsWeb) {
-      // CORS restrictions on web — skip HTTP calls and use on-device model
-      return predict(officeName: officeName, time: time);
-    }
-
     final now        = time ?? DateTime.now();
     final district   = _extractDistrict(officeName);
     final officeType = _officeTypeFor(officeName);

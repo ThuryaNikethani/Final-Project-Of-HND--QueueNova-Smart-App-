@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
@@ -23,22 +24,37 @@ class RequestTrackingScreen extends StatefulWidget {
 
 class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
   String selectedFilter = 'All';
-  final List<String> filters = ['All', 'Confirmed', 'Completed', 'Cancelled'];
+  final List<String> filters = ['All', 'Pending', 'Confirmed', 'Completed', 'Cancelled'];
   List<AppointmentModel> appointments = [];
   bool isLoading = true;
+  StreamSubscription<List<AppointmentModel>>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _loadAppointments();
+    _subscription = AppointmentService.watchAppointments().listen((apts) {
+      if (!mounted) return;
+      setState(() {
+        appointments = apts.reversed.toList();
+        isLoading = false;
+      });
+    }, onError: (_) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadAppointments() async {
-    setState(() => isLoading = true);
     final apts = await AppointmentService.getAppointments();
+    if (!mounted) return;
     setState(() {
       appointments = apts.reversed.toList();
-      isLoading = false;
     });
   }
 
@@ -49,6 +65,7 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
 
   Color getStatusColor(String status) {
     switch (status) {
+      case 'Pending': return AppColors.warning;
       case 'Confirmed': return AppColors.success;
       case 'Completed': return AppColors.info;
       case 'Cancelled': return AppColors.error;
@@ -58,6 +75,7 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
 
   String getStatusText(String status) {
     switch (status) {
+      case 'Pending': return 'pending_approval'.tr();
       case 'Confirmed': return 'appointment_confirmed_status_text'.tr();
       case 'Completed': return 'service_completed_successfully'.tr();
       case 'Cancelled': return 'appointment_cancelled_status_text'.tr();
@@ -106,18 +124,29 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
                   ),
                 ),
                 Expanded(
-                  child: filteredAppointments.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.inbox, size: 64, color: AppColors.grey),
-                              const SizedBox(height: 16),
-                              Text('no_requests_found'.tr(), style: const TextStyle(color: AppColors.grey)),
-                            ],
-                          ),
+                  child: RefreshIndicator(
+                    onRefresh: _loadAppointments,
+                    child: filteredAppointments.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.6,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.inbox, size: 64, color: AppColors.grey),
+                                    const SizedBox(height: 16),
+                                    Text('no_requests_found'.tr(), style: const TextStyle(color: AppColors.grey)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         )
                       : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredAppointments.length,
                           itemBuilder: (context, index) {
@@ -189,6 +218,7 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
                             );
                           },
                         ),
+                  ),
                 ),
               ],
             ),

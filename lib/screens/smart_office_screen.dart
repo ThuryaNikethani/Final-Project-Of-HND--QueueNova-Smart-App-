@@ -15,6 +15,41 @@ const Map<String, String> _kCrowdLabelKeys = {
   'Closed': 'crowd_level_closed',
 };
 
+// Same service catalogue/labels as book_appointment_screen.dart's service
+// picker (duplicated locally — that file's own map is private to its
+// library and its own selection logic is left untouched here).
+const Map<String, String> _kServiceKeys = {
+  'Passport Renewal': 'svc_passport_renewal_name',
+  'New Passport Application': 'svc_new_passport_name',
+  'National ID Card': 'svc_national_id_name',
+  'NIC Replacement': 'svc_nic_replacement_name',
+  'Driving License': 'svc_driving_license_name',
+  'License Renewal': 'svc_license_renewal_name',
+  'Birth Certificate': 'svc_birth_certificate_name',
+  'Marriage Certificate': 'svc_marriage_certificate_name',
+  'Death Certificate': 'svc_death_certificate_name',
+  'Police Clearance': 'svc_police_clearance_name',
+  'Visa Services': 'svc_visa_services_name',
+  'Land Registration': 'svc_land_registration_name',
+};
+
+// Which office type offers each service, so the office list can be narrowed
+// to offices that actually provide the service the citizen is booking for.
+const Map<String, String> _kServiceOfficeType = {
+  'Passport Renewal': 'Passport Office',
+  'New Passport Application': 'Passport Office',
+  'Visa Services': 'Passport Office',
+  'Driving License': 'RMV',
+  'License Renewal': 'RMV',
+  'National ID Card': 'Divisional Secretariat',
+  'NIC Replacement': 'Divisional Secretariat',
+  'Birth Certificate': 'Divisional Secretariat',
+  'Marriage Certificate': 'Divisional Secretariat',
+  'Death Certificate': 'Divisional Secretariat',
+  'Police Clearance': 'Divisional Secretariat',
+  'Land Registration': 'Divisional Secretariat',
+};
+
 class SmartOfficeScreen extends StatefulWidget {
   const SmartOfficeScreen({super.key});
 
@@ -32,6 +67,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': 'Dam Street, Colombo 12',
       'distance': '2.5 km',
       'officeId': 'Divisional Secretariat - Colombo',
+      'type': 'Divisional Secretariat',
       'lat': 6.9410,
       'lng': 79.8510,
     },
@@ -40,6 +76,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': 'Kiribathgoda',
       'distance': '12.8 km',
       'officeId': 'RMV - Kiribathgoda',
+      'type': 'RMV',
       'lat': 6.9779,
       'lng': 79.9294,
     },
@@ -48,6 +85,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': '341/3, Kotte Road, Rajagiriya',
       'distance': '6.5 km',
       'officeId': 'Divisional Secretariat - Nugegoda',
+      'type': 'Divisional Secretariat',
       'lat': 6.9067,
       'lng': 79.9021,
     },
@@ -56,6 +94,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': 'Department of Motor Traffic Road, Boralesgamuwa',
       'distance': '15.3 km',
       'officeId': 'RMV - Werahera',
+      'type': 'RMV',
       'lat': 6.8399,
       'lng': 79.9070,
     },
@@ -64,6 +103,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': 'Suhurupaya, Sri Subuthipura Road, Battaramulla',
       'distance': '8.2 km',
       'officeId': 'Passport Office - Battaramulla',
+      'type': 'Passport Office',
       'lat': 6.9034,
       'lng': 79.9187,
     },
@@ -72,6 +112,7 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       'address': 'Kandy',
       'distance': '115 km',
       'officeId': 'Divisional Secretariat - Kandy',
+      'type': 'Divisional Secretariat',
       'lat': 7.2906,
       'lng': 80.6337,
     },
@@ -84,6 +125,9 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
   Map<String, double> _liveDistancesKm = {};
   Timer? _refreshTimer;
   bool _isLoading = true;
+  // 'All' shows every office (unfiltered — the screen's original behavior).
+  // Picking a specific service narrows the list to offices that provide it.
+  String selectedService = 'All';
 
   @override
   void initState() {
@@ -121,22 +165,22 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
     setState(() => _liveDistancesKm = distances);
   }
 
-  void _refreshPredictions() {
+  Future<void> _refreshPredictions() async {
     final now = DateTime.now();
-    final newPredictions = <String, QueuePrediction>{};
-    for (final office in _staticOffices) {
-      final officeId = office['officeId'] as String;
-      newPredictions[officeId] = MLPredictionService.predict(
-        officeName: officeId,
-        time: now,
-      );
-    }
-    if (mounted) {
-      setState(() {
-        _predictions = newPredictions;
-        _isLoading = false;
-      });
-    }
+    final officeIds = _staticOffices.map((o) => o['officeId'] as String).toList();
+    // Live backend data (trained ML model, falling back to real DB queue
+    // counts, falling back to the on-device statistical model) instead of
+    // the pure offline formula — same QueuePrediction shape either way, so
+    // nothing downstream of _predictions needs to change.
+    final results = await MLPredictionService.fetchAndPredictAll(
+      officeNames: officeIds,
+      time: now,
+    );
+    if (!mounted) return;
+    setState(() {
+      _predictions = {for (final r in results) r.officeName: r.prediction};
+      _isLoading = false;
+    });
   }
 
   // Build the merged office map the way the original code expected it
@@ -145,14 +189,22 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
       final id = static_['officeId'] as String;
       final pred = _predictions[id];
       final liveKm = _liveDistancesKm[id];
+      // Numeric km for the "which office is nearest" comparison — from live
+      // GPS when available, else parsed off the static fallback label (e.g.
+      // '2.5 km' -> 2.5) so distance-based recommendation still works with
+      // Location Access off.
+      final double distanceKm = liveKm ??
+          double.tryParse((static_['distance'] as String).split(' ').first) ??
+          double.infinity;
       return {
         'name': static_['name'],
         'address': static_['address'],
         'distance': liveKm != null ? '${liveKm.toStringAsFixed(1)} km' : static_['distance'],
+        'distanceKm': distanceKm,
         'officeId': id,
+        'type': static_['type'],
         'crowd': pred?.crowdLevel.label ?? 'Low',
         'waitMinutes': pred?.estimatedWaitMinutes,
-        'recommended': pred != null && pred.crowdLevel != CrowdLevel.high,
       };
     }).toList();
   }
@@ -197,9 +249,34 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final offices = _offices;
-    final recommendedOffices = offices.where((o) => o['recommended'] == true).toList();
-    final otherOffices = offices.where((o) => o['recommended'] == false).toList();
+    final allOffices = _offices;
+    // Narrow to offices that provide the selected service. 'All' (default)
+    // keeps every office, matching the screen's original behavior exactly.
+    final requiredType = _kServiceOfficeType[selectedService];
+    final offices = requiredType == null
+        ? allOffices
+        : allOffices.where((o) => o['type'] == requiredType).toList();
+
+    // "Recommended" = not crowded AND on the closer side among the current
+    // candidates, so the AI banner reflects both queue length and distance
+    // rather than crowd level alone.
+    final distances = offices
+        .map((o) => o['distanceKm'] as double)
+        .where((d) => d.isFinite)
+        .toList();
+    final avgDistanceKm = distances.isEmpty
+        ? double.infinity
+        : distances.reduce((a, b) => a + b) / distances.length;
+
+    final officesWithRecommendation = offices.map((o) {
+      final crowd = o['crowd'] as String;
+      final notCrowded = crowd == 'Low' || crowd == 'Medium';
+      final isNear = (o['distanceKm'] as double) <= avgDistanceKm;
+      return {...o, 'recommended': notCrowded && isNear};
+    }).toList();
+
+    final recommendedOffices = officesWithRecommendation.where((o) => o['recommended'] == true).toList();
+    final otherOffices = officesWithRecommendation.where((o) => o['recommended'] == false).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -257,6 +334,43 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
                       ],
                     ),
                   ),
+                  // Service filter — narrows offices to ones offering the
+                  // selected service; 'All' (default) shows every office,
+                  // identical to the screen's original behavior.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'select_service'.tr(),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 40,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _kServiceKeys.length + 1,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final service = index == 0 ? 'All' : _kServiceKeys.keys.elementAt(index - 1);
+                        final label = index == 0 ? 'filter_all'.tr() : _kServiceKeys[service]!.tr();
+                        final isSelected = selectedService == service;
+                        return FilterChip(
+                          label: Text(label),
+                          selected: isSelected,
+                          onSelected: (_) => setState(() => selectedService = service),
+                          selectedColor: AppColors.primaryBlue,
+                          checkmarkColor: Colors.white,
+                          labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   // Recommended Offices Section
                   if (recommendedOffices.isNotEmpty) ...[
                     Padding(
@@ -273,19 +387,32 @@ class _SmartOfficeScreenState extends State<SmartOfficeScreen> {
                     ...recommendedOffices.map((office) => _buildOfficeCard(context, office, isRecommended: true)),
                   ],
                   const SizedBox(height: 16),
-                  // All Offices Section
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'all_service_centers'.tr(),
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  if (offices.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.location_off, size: 56, color: AppColors.grey),
+                          const SizedBox(height: 12),
+                          Text('no_services_found'.tr(), style: const TextStyle(color: AppColors.grey)),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    // All Offices Section
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'all_service_centers'.tr(),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...otherOffices.map((office) => _buildOfficeCard(context, office, isRecommended: false)),
+                    const SizedBox(height: 12),
+                    ...otherOffices.map((office) => _buildOfficeCard(context, office, isRecommended: false)),
+                  ],
                   const SizedBox(height: 30),
                 ],
               ),

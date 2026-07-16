@@ -1,0 +1,15 @@
+{
+  "description": "Weighted scoring to rank offices \u2014 lower wait + more counters + lower population density = better",
+  "weights": {
+    "wait_time": -0.6,
+    "counters": 0.2,
+    "pop_density": -0.2
+  },
+  "crowd_penalty": {
+    "low": 0.0,
+    "medium": -0.1,
+    "high": -0.25
+  },
+  "holiday_closed": true,
+  "version": "1.0"
+}

@@ -56,3 +56,6 @@ lib/firebase_options.dart
 
 # Firebase Admin service account keys (push notifications)
 **/firebase-service-account*.json
+
+# ML model exceeds GitHub's 100MB file size limit
+lib/web/backend_server/ml/models/wait_time_model.pkl

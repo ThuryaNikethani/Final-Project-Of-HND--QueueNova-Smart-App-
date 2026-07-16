@@ -1,0 +1,21 @@
+{
+  "queue_at_arrival": 0.351769,
+  "office_type_enc": 0.298613,
+  "service_avg_min": 0.079651,
+  "hour_sin": 0.04955,
+  "day_of_week": 0.047271,
+  "num_counters": 0.03299,
+  "hour_cos": 0.027996,
+  "month": 0.023544,
+  "hour": 0.019435,
+  "district_pop_log": 0.012154,
+  "month_cos": 0.010764,
+  "month_sin": 0.010264,
+  "day_cos": 0.008774,
+  "service_type_enc": 0.008274,
+  "day_sin": 0.007009,
+  "district_enc": 0.004554,
+  "is_monday": 0.003718,
+  "is_friday": 0.00367,
+  "is_holiday": 0.0
+}
