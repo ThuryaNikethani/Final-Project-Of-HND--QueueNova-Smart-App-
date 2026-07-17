@@ -948,6 +948,8 @@
   "web_payment_pending_counter": "கவுண்டரில் கட்டணம் நிலுவையில்",
   "web_invalid_qr_snackbar": "தவறான QR குறியீடு",
   "web_already_checked_in_snackbar": "{} ஏற்கனவே செக்-இன் ஆனார்",
+  "web_appointment_expired_scanned": "நியமன தேதி கடந்துவிட்டது: {}",
+  "web_appointment_expired_snackbar": "{} இன் நியமன தேதி ஏற்கனவே கடந்துவிட்டது",
   "web_calling_to_counter": "{} (டோக்கன் {}) கவுண்டர் 1 க்கு அழைக்கிறது",
 
   "web_document_management_title": "ஆவண மேலாண்மை",

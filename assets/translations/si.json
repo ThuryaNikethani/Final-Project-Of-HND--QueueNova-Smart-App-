@@ -948,6 +948,8 @@
   "web_payment_pending_counter": "කවුන්ටරයේ ගෙවීම පොරොත්තුවෙන්",
   "web_invalid_qr_snackbar": "වැරදි QR කේතය",
   "web_already_checked_in_snackbar": "{} දැනටමත් පැමිණ ඇත",
+  "web_appointment_expired_scanned": "නියමිත දිනය ගෙවී ඇත: {}",
+  "web_appointment_expired_snackbar": "{} ගේ නියමිත දිනය දැනටමත් ගෙවී ඇත",
   "web_calling_to_counter": "{} (ටෝකන {}) කවුන්ටර 1 වලට කැඳවමින්",
 
   "web_document_management_title": "ලේඛන කළමනාකරණය",

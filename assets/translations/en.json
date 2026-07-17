@@ -948,6 +948,8 @@
   "web_payment_pending_counter": "Payment pending at counter",
   "web_invalid_qr_snackbar": "Invalid QR Code",
   "web_already_checked_in_snackbar": "{} already checked in",
+  "web_appointment_expired_scanned": "Appointment date has passed: {}",
+  "web_appointment_expired_snackbar": "{}'s appointment date has already passed",
   "web_calling_to_counter": "Calling {} (Token {}) to Counter 1",
 
   "web_document_management_title": "Document Management",

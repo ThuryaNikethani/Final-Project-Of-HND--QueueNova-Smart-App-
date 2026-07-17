@@ -53,6 +53,10 @@ class _WebReceptionState extends State<WebReception> {
   // doesn't depend on matching substrings inside the (now-translatable)
   // scannedData message.
   String _scanResultKind = '';
+  // All appointments regardless of date (todayAppointments is filtered to
+  // today only), so _processCheckIn can tell "no such appointment" apart
+  // from "this appointment's date has already passed" when a QR is scanned.
+  List<Map<String, dynamic>> _allAppointmentsForLookup = [];
   int activeQueueCount = 0;
   int todayArrivals = 0;
   int walkInCount = 0;
@@ -160,6 +164,12 @@ class _WebReceptionState extends State<WebReception> {
         'paymentStatus': r['payment_status'] ?? 'pending',
         'fee': double.tryParse(r['fee_amount']?.toString() ?? '') ?? 0,
       }).toList();
+      _allAppointmentsForLookup = rows.map((r) => {
+        'id': r['id'],
+        'token': r['token'] ?? '',
+        'citizen': r['citizen_name'] ?? '',
+        'date': r['date']?.toString() ?? '',
+      }).toList();
     });
   }
 
@@ -217,6 +227,49 @@ class _WebReceptionState extends State<WebReception> {
       (apt) => apt['id'] == lookupId || apt['token'] == qrData || apt['citizen'].contains(qrData),
       orElse: () => {},
     );
+
+    // Not found among today's appointments — check whether it's a real
+    // appointment whose date has simply already passed, so that case gets
+    // its own clear message instead of the generic "invalid QR" one.
+    if (appointment.isEmpty) {
+      final expired = _allAppointmentsForLookup.firstWhere(
+        (apt) => apt['id'] == lookupId || apt['token'] == qrData || apt['citizen'].contains(qrData),
+        orElse: () => {},
+      );
+      if (expired.isNotEmpty) {
+        final expiredDate = DateTime.tryParse(expired['date'] as String? ?? '');
+        final today = DateTime.now();
+        final isPast = expiredDate != null &&
+            expiredDate.isBefore(DateTime(today.year, today.month, today.day));
+        if (isPast) {
+          setState(() {
+            scannedData = 'web_appointment_expired_scanned'.tr(args: ['${expired['citizen']}']);
+            _scanResultKind = 'expired';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('web_appointment_expired_snackbar'.tr(args: ['${expired['citizen']}'])), backgroundColor: Colors.red),
+          );
+          _showScanResultDialog(
+            title: 'web_appointment_expired_scanned'.tr(args: ['${expired['citizen']}']),
+            color: Colors.red,
+            icon: Icons.event_busy,
+            rows: [
+              ('web_col_citizen'.tr(), '${expired['citizen']}'),
+              ('qr_detail_token_label'.tr(), '${expired['token']}'),
+            ],
+          );
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                scannedData = '';
+                _scanResultKind = '';
+              });
+            }
+          });
+          return;
+        }
+      }
+    }
 
     if (appointment.isNotEmpty && !appointment['checkedIn']) {
       setState(() {
@@ -608,7 +661,7 @@ class _WebReceptionState extends State<WebReception> {
                                           style: TextStyle(
                                             color: _scanResultKind == 'success'
                                                 ? Colors.green
-                                                : (_scanResultKind == 'invalid' ? Colors.red : Colors.grey),
+                                                : ((_scanResultKind == 'invalid' || _scanResultKind == 'expired') ? Colors.red : Colors.grey),
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
