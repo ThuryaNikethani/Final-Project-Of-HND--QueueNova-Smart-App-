@@ -479,17 +479,25 @@ class _HomeContentState extends State<HomeContent> {
                   
                   return GestureDetector(
                     onTap: () {
-                      if (catName == 'more') {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const ServicesScreen()));
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('service_coming_soon'.tr(args: [catName.tr()])),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.primaryBlue,
-                          ),
-                        );
-                      }
+                      // Maps this quick-access row's category names to the
+                      // filter categories ServicesScreen actually knows
+                      // about ('All', 'Passport', 'NIC', 'License',
+                      // 'Certificate', 'Other') — see services_screen.dart's
+                      // `categories` list and allServices' 'category' field.
+                      const categoryFilters = {
+                        'passport': 'Passport',
+                        'nic_category': 'NIC',
+                        'driving': 'License',
+                        'birth': 'Certificate',
+                        'visa': 'Other',
+                        'more': 'All',
+                      };
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ServicesScreen(initialFilter: categoryFilters[catName] ?? 'All'),
+                        ),
+                      );
                     },
                     child: Column(
                       children: [
