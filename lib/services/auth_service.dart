@@ -303,7 +303,16 @@ class AuthService extends ChangeNotifier {
       return true;
     } on FirebaseAuthException catch (e) {
       debugPrint('Login error: ${e.code} - ${e.message}');
-      return _loginOffline(nic, password);
+      // Firebase genuinely rejected these credentials — falling back to the
+      // password-blind offline login here would let a wrong (e.g. an old,
+      // just-changed) password silently succeed as long as the NIC matches
+      // whatever's cached on this device. Only a real connectivity failure
+      // should fall back to offline mode; a credential rejection must not.
+      if (e.code == 'network-request-failed') {
+        return _loginOffline(nic, password);
+      }
+      _lastLoginError = 'invalid_credentials';
+      return false;
     } catch (e) {
       debugPrint('Unexpected login error: $e');
       return _loginOffline(nic, password);
@@ -449,6 +458,83 @@ class AuthService extends ChangeNotifier {
   void cancelTwoFactorLogin() {
     _twoFactorUid = null;
     _twoFactorPendingProfile = null;
+  }
+
+  // ── Forgot Password ─────────────────────────────────────────────────────
+  //
+  // The citizen picks their new password up front, but it only takes effect
+  // once they verify a code emailed to their registered address — this
+  // mirrors the two-factor OTP flow, but the actual password change happens
+  // server-side (via Firebase Admin, see backend_server/server.js) since the
+  // user isn't authenticated yet and the app's Firestore rules correctly
+  // don't allow an anonymous client to write on another uid's behalf.
+
+  /// Looks up [nic] via the public `nic_index` doc, then asks the backend to
+  /// email a reset code. [newPassword] is never written to Firestore — it's
+  /// only held in the backend's memory until the code is confirmed or
+  /// expires. Returns the uid/email pair for the verify screen on success,
+  /// or null if the NIC isn't registered or the request failed.
+  Future<Map<String, String>?> requestPasswordReset({required String nic, required String newPassword}) async {
+    try {
+      final indexDoc = await _db.collection('nic_index').doc(nic.toUpperCase()).get();
+      if (!indexDoc.exists) return null;
+      final uid = indexDoc.data()?['uid'] as String?;
+      final email = indexDoc.data()?['email'] as String?;
+      if (uid == null || email == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${BackendConfig.baseUrl}/api/auth/request-password-reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'email': email, 'newPassword': newPassword}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        debugPrint('requestPasswordReset failed: ${response.statusCode} ${response.body}');
+        return null;
+      }
+      return {'uid': uid, 'email': email};
+    } catch (e) {
+      debugPrint('requestPasswordReset error: $e');
+      return null;
+    }
+  }
+
+  /// Regenerates and resends the reset code for [uid]/[email] (e.g. the
+  /// citizen's original code expired). [newPassword] must be resent since
+  /// the backend only ever holds one pending reset per uid at a time.
+  Future<bool> resendPasswordResetCode({required String uid, required String email, required String newPassword}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${BackendConfig.baseUrl}/api/auth/request-password-reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'email': email, 'newPassword': newPassword}),
+      ).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('resendPasswordResetCode error: $e');
+      return false;
+    }
+  }
+
+  /// Verifies [code] for the pending reset on [uid]. On success the backend
+  /// has already updated the Firebase Auth password — the citizen can log in
+  /// with it immediately.
+  Future<bool> confirmPasswordReset({required String uid, required String code}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${BackendConfig.baseUrl}/api/auth/confirm-password-reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'code': code}),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        debugPrint('confirmPasswordReset failed: ${response.statusCode} ${response.body}');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('confirmPasswordReset error: $e');
+      return false;
+    }
   }
 
   // Offline fallback login (matches existing SharedPreferences behaviour)

@@ -4,6 +4,7 @@ import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/register_screen.dart';
 import 'package:queuenova_mobile/screens/home_screen.dart';
 import 'package:queuenova_mobile/screens/otp_verification_screen.dart';
+import 'package:queuenova_mobile/screens/forgot_password_screen.dart';
 import 'package:queuenova_mobile/services/auth_service.dart';
 import 'package:provider/provider.dart';
 
@@ -204,7 +205,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                      );
+                    },
                     child: Text(
                       'forgot_password'.tr(),
                       style: const TextStyle(color: AppColors.primaryBlue),
