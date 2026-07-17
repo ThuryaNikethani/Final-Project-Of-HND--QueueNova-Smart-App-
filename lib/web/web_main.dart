@@ -33,6 +33,7 @@ import 'web_audit_logs.dart';
 import 'web_system_health.dart';
 import 'web_profile.dart';
 import 'web_payment_reports.dart';
+import 'web_feedback_list.dart';
 import 'web_role_model.dart';
 import 'web_settings_screen.dart';
 
@@ -1297,6 +1298,12 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       builder: (context) =>
                                           WebAppointments(userRole: widget.userRole, staffId: widget.staffId)),
                                 );
+                              } else if (notif['action'] == 'View Feedback') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => WebFeedbackList(staffName: widget.userName)),
+                                );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -1680,7 +1687,8 @@ class _DashboardHomeState extends State<DashboardHome> {
                       SizedBox(width: spacing),
                       Expanded(
                         child: _buildStatCard('web_stat_avg_satisfaction'.tr(), _statValue('avgSatisfaction'),
-                            Icons.star, Colors.amber),
+                            Icons.star, Colors.amber,
+                            onTap: () => _openScreen(WebFeedbackList(staffName: widget.userName))),
                       ),
                       SizedBox(width: spacing),
                       Expanded(

@@ -2,17 +2,24 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/config/backend_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const Map<String, String> _kServiceNameKeys = {
   'Passport Renewal': 'svc_passport_renewal_name',
+  'New Passport Application': 'svc_new_passport_name',
   'National ID Card': 'svc_national_id_name',
+  'NIC Replacement': 'svc_nic_replacement_name',
   'Driving License': 'svc_driving_license_name',
+  'License Renewal': 'svc_license_renewal_name',
   'Birth Certificate': 'svc_birth_certificate_name',
+  'Marriage Certificate': 'svc_marriage_certificate_name',
+  'Death Certificate': 'svc_death_certificate_name',
   'Police Clearance': 'svc_police_clearance_name',
   'Visa Services': 'svc_visa_services_name',
+  'Land Registration': 'svc_land_registration_name',
 };
 
 class FeedbackScreen extends StatefulWidget {
@@ -30,11 +37,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   final List<String> services = [
     'Passport Renewal',
+    'New Passport Application',
     'National ID Card',
+    'NIC Replacement',
     'Driving License',
+    'License Renewal',
     'Birth Certificate',
+    'Marriage Certificate',
+    'Death Certificate',
     'Police Clearance',
     'Visa Services',
+    'Land Registration',
   ];
 
   Future<void> _mirrorFeedbackToBackend({
@@ -58,6 +71,36 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       );
     } catch (e) {
       debugPrint('Feedback backend mirror failed: $e');
+    }
+  }
+
+  /// Notifies staff the moment a citizen submits feedback, via the same
+  /// `staff_notifications` collection the officer dashboard's bell icon
+  /// already listens to live (see `AppointmentService._notifyStaffOfNewAppointment`
+  /// for the identical pattern). All 5 officer roles can review/reply to
+  /// feedback from their Dashboard, so all 5 are targeted.
+  Future<void> _notifyStaffOfFeedback({
+    required String citizenName,
+    required String service,
+    required int rating,
+    required String comment,
+  }) async {
+    try {
+      await FirebaseFirestore.instance.collection('staff_notifications').add({
+        'title': 'New Feedback Received',
+        'message': comment.isNotEmpty
+            ? '$citizenName rated $service $rating/5: "$comment"'
+            : '$citizenName rated $service $rating/5.',
+        'type': 'feedback',
+        'action': 'View Feedback',
+        'targetRoles': const ['admin', 'queueManager', 'serviceProcessor', 'reception', 'departmentManager'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'service': service,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyStaffOfFeedback failed: $e');
     }
   }
 
@@ -95,6 +138,14 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     _mirrorFeedbackToBackend(
       citizenName: userName,
       citizenNic: nic,
+      service: selectedService,
+      rating: rating.toInt(),
+      comment: commentController.text,
+    );
+
+    // Fire-and-forget — never blocks the citizen.
+    _notifyStaffOfFeedback(
+      citizenName: userName,
       service: selectedService,
       rating: rating.toInt(),
       comment: commentController.text,

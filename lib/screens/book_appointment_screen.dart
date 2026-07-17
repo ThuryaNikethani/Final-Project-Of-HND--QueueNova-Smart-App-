@@ -53,11 +53,13 @@ const Map<String, String> _kBookOfficeKeys = {
 class BookAppointmentScreen extends StatefulWidget {
   final AppointmentModel? rescheduleAppointment;
   final String? preSelectedOffice;
+  final String? preSelectedService;
 
   const BookAppointmentScreen({
     super.key,
     this.rescheduleAppointment,
     this.preSelectedOffice,
+    this.preSelectedService,
   });
 
   @override
@@ -481,6 +483,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   @override
   void initState() {
     super.initState();
+
+    if (widget.preSelectedService != null &&
+        services.contains(widget.preSelectedService)) {
+      selectedService = widget.preSelectedService!;
+    }
     _updateFee();
 
     if (widget.preSelectedOffice != null &&

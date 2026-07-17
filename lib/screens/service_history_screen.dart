@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/models/appointment_model.dart';
 import 'package:queuenova_mobile/services/appointment_service.dart';
+import 'package:queuenova_mobile/screens/request_tracking_screen.dart';
 
 const Map<String, String> _kHistoryStatusKeys = {
   'All': 'filter_all',
@@ -243,8 +244,9 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                         const Spacer(),
                                         TextButton(
                                           onPressed: () {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('tracking_details_coming_soon'.tr()), behavior: SnackBarBehavior.floating),
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(builder: (_) => const RequestTrackingScreen()),
                                             );
                                           },
                                           child: Text('track_button'.tr()),

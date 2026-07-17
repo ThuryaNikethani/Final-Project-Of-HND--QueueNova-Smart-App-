@@ -1072,6 +1072,40 @@ class WebApiService {
     return false;
   }
 
+  // ── Feedback ────────────────────────────────────────────────────────────────
+
+  /// Full list of citizen feedback (Dashboard's "Avg. Satisfaction" stat
+  /// card, tapped open to review individual ratings/comments and reply).
+  static Future<List<Map<String, dynamic>>> getFeedbackList() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/feedback'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getFeedbackList error: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> replyToFeedback(int id, String reply, String repliedBy) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/feedback/$id/reply'),
+            headers: _headers,
+            body: jsonEncode({'reply': reply, 'repliedBy': repliedBy}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.replyToFeedback error: $e');
+    }
+    return false;
+  }
+
   /// Per-officer dashboard/app preferences (web_settings_screen.dart).
   /// Returns `{}` if nothing's been saved yet.
   static Future<Map<String, dynamic>> getUserPreferences(int id) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
+import 'package:queuenova_mobile/services/services_catalog_service.dart';
 
 const Map<String, String> _kCategoryKeys = {
   'All': 'filter_all',
@@ -11,6 +12,23 @@ const Map<String, String> _kCategoryKeys = {
   'Certificate': 'category_certificate',
   'Other': 'category_other',
 };
+
+// Maps the `icon` string key stored in the backend's `services` table back
+// to the IconData this screen renders (Postgres can't store IconData).
+IconData _iconFromKey(String? key) {
+  switch (key) {
+    case 'airplane_ticket': return Icons.airplane_ticket;
+    case 'badge': return Icons.badge;
+    case 'directions_car': return Icons.directions_car;
+    case 'celebration': return Icons.celebration;
+    case 'favorite': return Icons.favorite;
+    case 'sentiment_dissatisfied': return Icons.sentiment_dissatisfied;
+    case 'gavel': return Icons.gavel;
+    case 'flight': return Icons.flight;
+    case 'description': return Icons.description;
+    default: return Icons.miscellaneous_services;
+  }
+}
 
 class ServicesScreen extends StatefulWidget {
   final String initialFilter;
@@ -27,7 +45,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   final List<String> categories = ['All', 'Passport', 'NIC', 'License', 'Certificate', 'Other'];
 
-  final List<Map<String, dynamic>> allServices = [
+  List<Map<String, dynamic>> allServices = [
     {
       'name': 'Passport Renewal',
       'nameKey': 'svc_passport_renewal_name',
@@ -168,6 +186,32 @@ class _ServicesScreenState extends State<ServicesScreen> {
     if (widget.initialFilter != 'All') {
       selectedCategory = widget.initialFilter;
     }
+    _loadServicesFromApi();
+  }
+
+  // Replaces the static defaults above with the live catalog from the
+  // `services` table once it loads, so an admin editing a price/service
+  // there is reflected here without an app update. Falls back to the
+  // defaults already showing when the backend is unreachable or empty.
+  Future<void> _loadServicesFromApi() async {
+    final rows = await ServicesCatalogService.getServices();
+    if (!mounted || rows.isEmpty) return;
+    setState(() {
+      allServices = rows.map((r) {
+        final feeValue = double.tryParse('${r['fee']}') ?? 0;
+        return {
+          'name': r['name'] ?? '',
+          'nameKey': r['name_key'] ?? '',
+          'descKey': r['desc_key'] ?? '',
+          'reqKey': r['req_key'] ?? '',
+          'category': r['category'] ?? 'Other',
+          'icon': _iconFromKey(r['icon'] as String?),
+          'time': (r['time_minutes'] as num?)?.toInt() ?? 0,
+          'fee': NumberFormat('#,##0').format(feeValue),
+          'popular': r['popular'] == true,
+        };
+      }).toList();
+    });
   }
 
   List<Map<String, dynamic>> get filteredServices {
@@ -373,7 +417,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                         onPressed: () {
                                           Navigator.push(
                                             context,
-                                            MaterialPageRoute(builder: (context) => const BookAppointmentScreen()),
+                                            MaterialPageRoute(
+                                              builder: (context) => BookAppointmentScreen(
+                                                preSelectedService: service['name'] as String,
+                                              ),
+                                            ),
                                           );
                                         },
                                         style: ElevatedButton.styleFrom(
