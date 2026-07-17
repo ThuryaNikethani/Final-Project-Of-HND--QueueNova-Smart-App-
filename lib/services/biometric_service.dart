@@ -23,12 +23,22 @@ class BiometricService {
 
   /// Prompts the OS biometric dialog. Returns false on failure, cancellation,
   /// or any platform error rather than throwing.
+  ///
+  /// [AuthenticationOptions.biometricOnly] is false rather than true: Android
+  /// maps `biometricOnly: true` to BIOMETRIC_STRONG-only, which rejects
+  /// Samsung's Face Recognition (registered as a weak/convenience biometric,
+  /// Class 1, since it's easier to spoof than fingerprint) even when it's
+  /// enrolled and working fine at the OS lock-screen level. Allowing weak
+  /// biometrics also means Android permits device PIN/pattern/password as a
+  /// fallback — the two can't be separated in the platform API — which is an
+  /// acceptable tradeoff since this only gates re-entry to an already
+  /// Firebase-authenticated session, not the citizen's actual credentials.
   static Future<bool> authenticate(String reason) async {
     try {
       return await _auth.authenticate(
         localizedReason: reason,
         options: const AuthenticationOptions(
-          biometricOnly: true,
+          biometricOnly: false,
           stickyAuth: true,
         ),
       );

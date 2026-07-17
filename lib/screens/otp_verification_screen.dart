@@ -10,8 +10,9 @@ import 'package:queuenova_mobile/screens/home_screen.dart';
 /// the sign-in (isAuthenticated stays false until this succeeds).
 class OtpVerificationScreen extends StatefulWidget {
   final String phone;
+  final String email;
 
-  const OtpVerificationScreen({super.key, required this.phone});
+  const OtpVerificationScreen({super.key, required this.phone, this.email = ''});
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -100,7 +101,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'otp_sent_to'.tr(args: [widget.phone]),
+                widget.email.isNotEmpty
+                    ? 'otp_sent_to_both'.tr(args: [widget.phone, widget.email])
+                    : 'otp_sent_to'.tr(args: [widget.phone]),
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 32),

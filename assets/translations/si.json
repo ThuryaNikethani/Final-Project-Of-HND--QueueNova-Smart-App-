@@ -68,6 +68,7 @@
   "invalid_nic_password": "වලංගු නොවන ජා.හැ. හෝ මුරපදය",
   "otp_verification_title": "ඔබේ අනන්‍යතාවය තහවුරු කරන්න",
   "otp_sent_to": "අංක 6ක කේතයක් {} වෙත එවන ලදී",
+  "otp_sent_to_both": "අංක 6ක කේතයක් {} සහ {} වෙත එවන ලදී",
   "otp_enter_code_hint": "අංක 6 කේතය ඇතුළත් කරන්න",
   "otp_code_required": "කරුණාකර කේතය ඇතුළත් කරන්න",
   "otp_verify_button": "තහවුරු කරන්න",

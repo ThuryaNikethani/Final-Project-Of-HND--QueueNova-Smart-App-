@@ -39,7 +39,10 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => OtpVerificationScreen(phone: authService.twoFactorPendingPhone ?? ''),
+          builder: (context) => OtpVerificationScreen(
+            phone: authService.twoFactorPendingPhone ?? '',
+            email: authService.twoFactorPendingEmail ?? '',
+          ),
         ),
       );
     } else if (success) {

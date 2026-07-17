@@ -35,6 +35,7 @@ class AuthService extends ChangeNotifier {
 
   bool get twoFactorPending => _twoFactorUid != null;
   String? get twoFactorPendingPhone => _twoFactorPendingProfile?['phone'];
+  String? get twoFactorPendingEmail => _twoFactorPendingProfile?['email'];
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -283,7 +284,7 @@ class AuthService extends ChangeNotifier {
           if (photoUrl != null) 'photoUrl': photoUrl,
           if (fsAddress != null) 'address': fsAddress,
         };
-        await _sendTwoFactorCode(uid: uid, phone: phone);
+        await _sendTwoFactorCode(uid: uid, phone: phone, email: email);
         notifyListeners();
         return true;
       }
@@ -357,21 +358,35 @@ class AuthService extends ChangeNotifier {
 
   /// Generates a fresh 6-digit code, stores it (5 min expiry) in
   /// `otp_codes/{uid}`, and sends it to [phone] via the backend's Twilio
-  /// relay (`/api/sms/send`).
-  Future<void> _sendTwoFactorCode({required String uid, required String phone}) async {
+  /// relay (`/api/sms/send`) and to [email] via the backend's Gmail relay
+  /// (`/api/email/send`). Either channel can fail independently (e.g. Twilio
+  /// not configured) without blocking the other.
+  Future<void> _sendTwoFactorCode({required String uid, required String phone, String? email}) async {
     final code = (100000 + Random().nextInt(900000)).toString();
     await _db.collection('otp_codes').doc(uid).set({
       'code': code,
       'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(minutes: 5))),
     });
+    final message = 'Your QueueNova verification code is $code. It expires in 5 minutes.';
     try {
       await http.post(
         Uri.parse('${BackendConfig.baseUrl}/api/sms/send'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone, 'message': 'Your QueueNova verification code is $code. It expires in 5 minutes.'}),
+        body: jsonEncode({'phone': phone, 'message': message}),
       ).timeout(const Duration(seconds: 8));
     } catch (e) {
       debugPrint('_sendTwoFactorCode SMS send failed: $e');
+    }
+    if (email != null && email.isNotEmpty) {
+      try {
+        await http.post(
+          Uri.parse('${BackendConfig.baseUrl}/api/email/send'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'subject': 'QueueNova verification code', 'message': message}),
+        ).timeout(const Duration(seconds: 8));
+      } catch (e) {
+        debugPrint('_sendTwoFactorCode email send failed: $e');
+      }
     }
   }
 
@@ -425,7 +440,7 @@ class AuthService extends ChangeNotifier {
     final uid = _twoFactorUid;
     final phone = _twoFactorPendingProfile?['phone'];
     if (uid == null || phone == null) return false;
-    await _sendTwoFactorCode(uid: uid, phone: phone);
+    await _sendTwoFactorCode(uid: uid, phone: phone, email: _twoFactorPendingProfile?['email']);
     return true;
   }
 

@@ -1,4 +1,4 @@
-package com.queuenova.queuenova_mobile
+package com.queuenova.mobile
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

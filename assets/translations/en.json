@@ -68,6 +68,7 @@
   "invalid_nic_password": "Invalid NIC or Password",
   "otp_verification_title": "Verify Your Identity",
   "otp_sent_to": "We sent a 6-digit code to {}",
+  "otp_sent_to_both": "We sent a 6-digit code to {} and {}",
   "otp_enter_code_hint": "Enter 6-digit code",
   "otp_code_required": "Please enter the code",
   "otp_verify_button": "Verify",
