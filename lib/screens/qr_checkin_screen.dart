@@ -27,7 +27,11 @@ class _QRCheckInScreenState extends State<QRCheckInScreen> {
     setState(() => isLoading = true);
     final apts = await AppointmentService.getAppointments();
     setState(() {
-      appointments = apts.where((a) => a.status == 'Confirmed').toList();
+      // Show a QR for every still-active appointment — a citizen should be
+      // able to check in as soon as they book, not only after staff flips
+      // it to Confirmed. Cancelled/Completed ones are excluded since
+      // there's nothing left to check in for.
+      appointments = apts.where((a) => a.status != 'Cancelled' && a.status != 'Completed').toList();
       if (appointments.isNotEmpty) {
         selectedAppointmentId = appointments[0].id;
       }
