@@ -153,7 +153,14 @@ class _WebNotificationsState extends State<WebNotifications> {
   Future<void> _resolvePriorityRequest(Map<String, dynamic> notif, bool approve) async {
     final token = notif['token'] as String?;
     if (token != null) {
-      await WebApiService.setQueuePriority(token, approve, officerName: widget.staffId);
+      final error = await WebApiService.setQueuePriority(token, approve, officerName: widget.staffId);
+      if (error != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
+        return;
+      }
     }
     await _notifyCitizenByNic(
       notif['nic'] as String?,

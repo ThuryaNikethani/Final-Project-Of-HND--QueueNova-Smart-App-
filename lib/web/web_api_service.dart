@@ -447,7 +447,11 @@ class WebApiService {
   /// Approves or rejects a citizen's self-requested priority-queue upgrade
   /// (flips `is_priority` on their still-waiting queue entry, or leaves it
   /// alone on reject). [token] is the citizen's queue token, e.g. "A-025".
-  static Future<bool> setQueuePriority(String token, bool approve, {String officerName = 'Officer'}) async {
+  /// Returns null on success, or the server's rejection message (e.g.
+  /// Priority Queue disabled, or Priority Queue Limit reached) on failure —
+  /// same convention as [addToQueue], for the same reason: the officer
+  /// needs to know *why* an approval didn't go through.
+  static Future<String?> setQueuePriority(String token, bool approve, {String officerName = 'Officer'}) async {
     try {
       final res = await http
           .patch(
@@ -456,11 +460,17 @@ class WebApiService {
             body: jsonEncode({'approve': approve, 'officerName': officerName}),
           )
           .timeout(const Duration(seconds: 5));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return null;
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['error'] as String? ?? 'Failed to update priority';
+      } catch (_) {
+        return 'Failed to update priority';
+      }
     } catch (e) {
       debugPrint('WebApiService.setQueuePriority error: $e');
+      return 'Failed to update priority: $e';
     }
-    return false;
   }
 
   // ── Reports ──────────────────────────────────────────────────────────────────
