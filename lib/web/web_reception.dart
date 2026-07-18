@@ -312,7 +312,13 @@ class _WebReceptionState extends State<WebReception> {
         paymentStatus: appointment['paymentStatus'] as String,
         fee: (appointment['fee'] as num).toDouble(),
         officerName: 'Reception Officer',
-      );
+      ).then((error) {
+        if (error != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error), backgroundColor: Colors.red),
+          );
+        }
+      });
     } else if (appointment.isEmpty) {
       setState(() {
         scannedData = 'web_invalid_qr_scanned'.tr();
@@ -463,7 +469,7 @@ class _WebReceptionState extends State<WebReception> {
                 final nic = nicController.text.trim();
                 final token = 'W-${(walkInQueue.length + 1).toString().padLeft(3, '0')}';
                 Navigator.pop(dialogContext);
-                await WebApiService.addToQueue(
+                final error = await WebApiService.addToQueue(
                   token: token,
                   officeId: selectedOffice,
                   citizenName: name,
@@ -477,7 +483,9 @@ class _WebReceptionState extends State<WebReception> {
                 await _loadReceptionStats();
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('web_walkin_registered_success'.tr()), backgroundColor: Colors.green),
+                  error == null
+                      ? SnackBar(content: Text('web_walkin_registered_success'.tr()), backgroundColor: Colors.green)
+                      : SnackBar(content: Text(error), backgroundColor: Colors.red),
                 );
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
@@ -848,7 +856,13 @@ class _WebReceptionState extends State<WebReception> {
                                                       paymentStatus: apt['paymentStatus'] as String,
                                                       fee: (apt['fee'] as num).toDouble(),
                                                       officerName: 'Reception Officer',
-                                                    );
+                                                    ).then((error) {
+                                                      if (error != null && mounted) {
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(content: Text(error), backgroundColor: Colors.red),
+                                                        );
+                                                      }
+                                                    });
                                                   }
                                                 },
                                                 style: ElevatedButton.styleFrom(

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:queuenova_mobile/config/backend_config.dart';
 import '../models/office_settings_model.dart';
 
 class OfficeSettingsService {
@@ -215,20 +217,63 @@ class OfficeSettingsService {
       ..sort();
   }
 
-  // Default settings for offices not individually configured:
-  // Mon–Fri, 8:00–17:00, lunch 12:00–13:00, all SL public holidays closed.
-  static OfficeSettings _getGenericOfficeSettings(String officeId) {
+  static TimeOfDay? _parseHHmm(String? hhmm) {
+    if (hhmm == null) return null;
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  // Default settings for offices not individually configured: falls back to
+  // the admin's global Office Hours (Web System Settings → Office Hours —
+  // office open/close time and Saturday/Sunday toggles) when reachable, so
+  // that panel actually takes effect instead of being saved with no effect.
+  // Mon–Fri always included; Sat/Sun added only if enabled there. Lunch
+  // break and holidays match the explicitly-configured offices above.
+  // Falls back to the previous hardcoded Mon–Fri 8:00–17:00 default if the
+  // backend is unreachable, same graceful-degradation pattern used
+  // elsewhere in this app (e.g. ServicesScreen._loadServicesFromApi).
+  static Future<OfficeSettings> _getGenericOfficeSettings(String officeId) async {
+    TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
+    TimeOfDay end = const TimeOfDay(hour: 17, minute: 0);
+    bool saturdayOpen = false;
+    bool sundayOpen = false;
+    try {
+      final res = await http
+          .get(Uri.parse('${BackendConfig.baseUrl}/api/web/system-settings'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final settings = body['settings'] as Map<String, dynamic>?;
+        if (settings != null) {
+          start = _parseHHmm(settings['officeOpenTime'] as String?) ?? start;
+          end = _parseHHmm(settings['officeCloseTime'] as String?) ?? end;
+          saturdayOpen = settings['saturdayOpen'] as bool? ?? saturdayOpen;
+          sundayOpen = settings['sundayOpen'] as bool? ?? sundayOpen;
+        }
+      }
+    } catch (_) {
+      // Backend unreachable — use the Mon–Fri 8:00–17:00 default above.
+    }
+
+    final workingHours = <int, WorkingHours>{
+      for (int day = 1; day <= 5; day++)
+        day: WorkingHours(start: start, end: end, lunchBreakTimes: const ['12:00-13:00']),
+    };
+    if (saturdayOpen) {
+      workingHours[6] = WorkingHours(start: start, end: end, lunchBreakTimes: const ['12:00-13:00']);
+    }
+    if (sundayOpen) {
+      workingHours[7] = WorkingHours(start: start, end: end, lunchBreakTimes: const ['12:00-13:00']);
+    }
+
     return OfficeSettings(
       officeId: officeId,
       officeName: officeId,
-      workingHours: {
-        for (int day = 1; day <= 5; day++)
-          day: WorkingHours(
-            start: const TimeOfDay(hour: 8, minute: 0),
-            end: const TimeOfDay(hour: 17, minute: 0),
-            lunchBreakTimes: ['12:00-13:00'],
-          ),
-      },
+      workingHours: workingHours,
       holidays: _getSriLankaPublicHolidays(),
     );
   }
@@ -238,7 +283,7 @@ class OfficeSettingsService {
     try {
       return settings.firstWhere((s) => s.officeId == officeId);
     } catch (e) {
-      return _getGenericOfficeSettings(officeId);
+      return await _getGenericOfficeSettings(officeId);
     }
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'package:easy_localization/easy_localization.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_api_service.dart';
@@ -44,10 +45,42 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
   List<Map<String, dynamic>> emergencyQueue = [];
 
+  // Queue Settings → "Enable Emergency Queue": when off, emergency handling
+  // is unavailable here regardless of whether entries exist.
+  bool _enableEmergencyQueue = true;
+
+  socket_io.Socket? _socket;
+
   @override
   void initState() {
     super.initState();
     _loadQueueFromApi();
+    _loadQueueSettings();
+    // Refreshes Queue Settings (e.g. Enable Emergency Queue) as soon as an
+    // admin saves a change on Web System Settings, without needing to
+    // navigate away and back — same live pattern web_reception.dart already
+    // uses for appointment/queue updates.
+    _socket = socket_io.io(
+      'http://localhost:3000',
+      socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+    );
+    _socket!.on('settings_updated', (_) => _loadQueueSettings());
+    _socket!.connect();
+  }
+
+  @override
+  void dispose() {
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQueueSettings() async {
+    final res = await WebApiService.getSystemSettings();
+    final settings = res?['settings'] as Map<String, dynamic>?;
+    if (!mounted || settings == null) return;
+    setState(() {
+      _enableEmergencyQueue = settings['enableEmergencyQueue'] as bool? ?? _enableEmergencyQueue;
+    });
   }
 
   Future<void> _loadQueueFromApi() async {
@@ -392,7 +425,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  if (emergencyQueue.isNotEmpty)
+                  if (emergencyQueue.isNotEmpty && _enableEmergencyQueue)
                     Expanded(
                       flex: 1,
                       child: ElevatedButton.icon(

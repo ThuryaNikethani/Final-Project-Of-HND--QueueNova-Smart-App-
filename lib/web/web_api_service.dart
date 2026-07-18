@@ -85,7 +85,12 @@ class WebApiService {
     return [];
   }
 
-  static Future<bool> addToQueue({
+  /// Returns null on success, or the server's rejection message (e.g. Max
+  /// Queue per Counter / Priority Queue Limit reached) on failure — the
+  /// caller should surface that message rather than treat this as a bare
+  /// pass/fail, since these limits come from Queue Settings and the officer
+  /// needs to know *why* it didn't go through.
+  static Future<String?> addToQueue({
     required String token,
     required String officeId,
     required String citizenName,
@@ -118,11 +123,17 @@ class WebApiService {
             }),
           )
           .timeout(const Duration(seconds: 5));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return null;
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['error'] as String? ?? 'Failed to add to queue';
+      } catch (_) {
+        return 'Failed to add to queue';
+      }
     } catch (e) {
       debugPrint('WebApiService.addToQueue error: $e');
+      return 'Failed to add to queue: $e';
     }
-    return false;
   }
 
   static Future<Map<String, dynamic>?> callNext(String officeId, String officerName) async {
