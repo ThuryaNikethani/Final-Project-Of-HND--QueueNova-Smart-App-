@@ -21,6 +21,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// correctly uses `localhost` instead and is not affected by either setting.
 class BackendConfig {
   static const bool useAdbReverse = false;
-  static const String lanIp = '192.168.1.100';
+  static const String lanIp = '192.168.8.185';
   static const String baseUrl = kIsWeb || useAdbReverse ? 'http://localhost:3000' : 'http://$lanIp:3000';
 }

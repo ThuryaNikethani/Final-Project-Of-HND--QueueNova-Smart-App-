@@ -188,7 +188,8 @@ class _WebLoginState extends State<WebLogin> with TickerProviderStateMixin {
   UserRole _roleFromString(String role) {
     switch (role) {
       case 'Queue Manager':      return UserRole.queueManager;
-      case 'Service Officer':    return UserRole.serviceProcessor;
+      case 'Service Officer':
+      case 'Service Processing Officer': return UserRole.serviceProcessor;
       case 'Reception':          return UserRole.reception;
       case 'Department Manager': return UserRole.departmentManager;
       default:                   return UserRole.admin;

@@ -412,7 +412,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (booking.status != 'Cancelled' && isUpcoming && !isPending)
+                                  if (booking.status != 'Cancelled' && isUpcoming)
                                     Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
