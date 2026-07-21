@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'web_api_service.dart';
@@ -79,6 +80,7 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
         'status': u['status'] ?? 'Active',
         'lastActive': _formatLastActive(u['last_active'] as String?),
         'avatar': _initials(u['name'] as String? ?? ''),
+        'photoUrl': u['photo_url'],
       }).toList();
     });
   }
@@ -407,8 +409,15 @@ class _WebUsersManagementState extends State<WebUsersManagement> {
                         radius: 20,
                         backgroundColor:
                             const Color(0xFF1A56DB).withOpacity(0.1),
-                        child: Text(user['avatar'],
-                            style: const TextStyle(color: Color(0xFF1A56DB))),
+                        backgroundImage: (user['photoUrl'] as String?)
+                                    ?.isNotEmpty ==
+                                true
+                            ? MemoryImage(base64Decode(user['photoUrl'] as String))
+                            : null,
+                        child: (user['photoUrl'] as String?)?.isNotEmpty == true
+                            ? null
+                            : Text(user['avatar'],
+                                style: const TextStyle(color: Color(0xFF1A56DB))),
                       ),
                       const SizedBox(width: 12),
                       Text(user['name']),
