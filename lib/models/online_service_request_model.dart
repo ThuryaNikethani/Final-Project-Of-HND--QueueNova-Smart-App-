@@ -93,7 +93,13 @@ class OnlineServiceRequestModel {
       targetDepartment: json['target_department'],
       resultDocumentId: json['result_document_id']?.toString(),
       resultDocumentName: json['result_document_name'],
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
+      // The backend returns created_at as a UTC timestamp — .toLocal() is
+      // required, otherwise dates near a local-midnight boundary can show
+      // the wrong calendar day, and any future time-of-day display would
+      // show the UTC clock time mislabeled as local.
+      createdAt: json['created_at'] != null
+          ? (DateTime.tryParse(json['created_at']) ?? DateTime.now()).toLocal()
+          : DateTime.now(),
       documents: docsJson is List
           ? docsJson.map((d) => OnlineRequestDocument.fromJson(d as Map<String, dynamic>)).toList()
           : const [],

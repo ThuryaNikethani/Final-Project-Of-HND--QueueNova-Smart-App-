@@ -74,7 +74,10 @@ class _WebOnlineServiceRequestsState extends State<WebOnlineServiceRequests> {
   String _formatDate(String? iso) {
     if (iso == null) return '';
     try {
-      return DateFormat('d MMM yyyy, hh:mm a').format(DateTime.parse(iso));
+      // The backend returns created_at as a UTC timestamp — .toLocal() is
+      // required, otherwise this prints the UTC wall-clock time mislabeled
+      // as if it were the officer's local time.
+      return DateFormat('d MMM yyyy, hh:mm a').format(DateTime.parse(iso).toLocal());
     } catch (_) {
       return iso;
     }
