@@ -11,6 +11,7 @@ class PaymentService {
     required double amount,
     required String appointmentId,
     String currency = 'lkr',
+    String requestType = 'appointment',
   }) async {
     try {
       final response = await http.post(
@@ -23,6 +24,7 @@ class PaymentService {
           'amount': (amount * 100).toInt(), // Stripe uses cents
           'currency': currency,
           'appointmentId': appointmentId,
+          'requestType': requestType,
         }),
       );
 
@@ -53,12 +55,14 @@ class PaymentService {
     required double amount,
     required String appointmentId,
     required String paymentMethod,
+    String requestType = 'appointment',
   }) async {
     try {
       // Record the transaction on the backend and get a real Stripe PI id.
       final intentData = await createPaymentIntent(
         amount: amount,
         appointmentId: appointmentId,
+        requestType: requestType,
       );
 
       final transactionId = intentData['transactionId'] ??

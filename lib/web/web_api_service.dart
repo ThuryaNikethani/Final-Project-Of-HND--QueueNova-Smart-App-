@@ -738,6 +738,130 @@ class WebApiService {
     return false;
   }
 
+  // ── Online Service Requests ──────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getOnlineRequests() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/online-requests'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getOnlineRequests error: $e');
+    }
+    return [];
+  }
+
+  /// Accepts the request and forwards it to [targetDepartment] in one action.
+  static Future<bool> acceptOnlineRequest(String id, {required String staffId, required String staffName, required String targetDepartment}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/online-requests/$id/accept'),
+            headers: _headers,
+            body: jsonEncode({'staffId': staffId, 'staffName': staffName, 'targetDepartment': targetDepartment}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.acceptOnlineRequest error: $e');
+    }
+    return false;
+  }
+
+  static Future<bool> rejectOnlineRequest(String id, {required String staffId, required String staffName, required String reason}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/online-requests/$id/reject'),
+            headers: _headers,
+            body: jsonEncode({'staffId': staffId, 'staffName': staffName, 'reason': reason}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.rejectOnlineRequest error: $e');
+    }
+    return false;
+  }
+
+  /// The relevant office uploads the finished result (e.g. the certificate).
+  static Future<bool> completeOnlineRequestAtOffice(
+    String id, {
+    required String staffId,
+    required String staffName,
+    required String citizenName,
+    required String citizenNic,
+    required List<int> fileBytes,
+    required String fileName,
+  }) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_base/online-requests/$id/office-complete'),
+      )
+        ..fields['staffId'] = staffId
+        ..fields['staffName'] = staffName
+        ..fields['citizenName'] = citizenName
+        ..fields['citizenNic'] = citizenNic
+        ..files.add(http.MultipartFile.fromBytes('file', fileBytes, filename: fileName));
+      final streamed = await request.send().timeout(const Duration(seconds: 15));
+      return streamed.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.completeOnlineRequestAtOffice error: $e');
+    }
+    return false;
+  }
+
+  /// The Service Officer's final "Share with Citizen" action.
+  static Future<bool> deliverOnlineRequest(String id, {required String staffId, required String staffName}) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_base/online-requests/$id/deliver'),
+            headers: _headers,
+            body: jsonEncode({'staffId': staffId, 'staffName': staffName}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.deliverOnlineRequest error: $e');
+    }
+    return false;
+  }
+
+  static Future<bool> setServiceOnlineEligible(int serviceId, bool onlineEligible) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$apiOrigin/api/services/$serviceId/online-eligible'),
+            headers: _headers,
+            body: jsonEncode({'onlineEligible': onlineEligible}),
+          )
+          .timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('WebApiService.setServiceOnlineEligible error: $e');
+    }
+    return false;
+  }
+
+  static Future<List<Map<String, dynamic>>> getServicesCatalog() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$apiOrigin/api/services'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getServicesCatalog error: $e');
+    }
+    return [];
+  }
+
   // ── Appointments ─────────────────────────────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getAppointments() async {

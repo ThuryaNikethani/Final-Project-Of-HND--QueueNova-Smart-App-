@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
+import 'package:queuenova_mobile/screens/online_service_request_screen.dart';
 import 'package:queuenova_mobile/services/services_catalog_service.dart';
 
 const Map<String, String> _kCategoryKeys = {
@@ -413,6 +414,25 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                       const SizedBox(width: 10),
                                       _buildInfoChip(Icons.currency_rupee, 'rupee_amount'.tr(args: [service['fee']]), AppColors.success),
                                       const Spacer(),
+                                      OutlinedButton(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => OnlineServiceRequestScreen(
+                                                preSelectedService: service['name'] as String,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(color: AppColors.primaryBlue),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        ),
+                                        child: const Text('Request Online', style: TextStyle(fontSize: 13)),
+                                      ),
+                                      const SizedBox(width: 8),
                                       ElevatedButton(
                                         onPressed: () {
                                           Navigator.push(

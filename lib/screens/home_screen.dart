@@ -15,6 +15,7 @@ import 'package:queuenova_mobile/screens/queue_tab_screen.dart';
 import 'package:queuenova_mobile/screens/book_appointment_screen.dart';
 import 'package:queuenova_mobile/screens/upload_document_screen.dart';
 import 'package:queuenova_mobile/screens/request_tracking_screen.dart';
+import 'package:queuenova_mobile/screens/online_service_request_screen.dart';
 import 'package:queuenova_mobile/screens/qr_checkin_screen.dart';
 import 'package:queuenova_mobile/screens/document_vault_screen.dart';
 import 'package:queuenova_mobile/screens/smart_office_screen.dart';
@@ -283,6 +284,7 @@ class _HomeContentState extends State<HomeContent> {
 
   final List<Map<String, dynamic>> quickActions = [
     {'titleKey': 'book_appointment', 'subtitleKey': 'schedule_a_service', 'icon': Icons.calendar_month_rounded, 'color': const Color(0xFF1A56DB), 'screen': const BookAppointmentScreen()},
+    {'titleKey': 'Online Service Request', 'subtitleKey': 'No visit required', 'icon': Icons.cloud_done_rounded, 'color': const Color(0xFF0EA5E9), 'screen': const OnlineServiceRequestScreen()},
     {'titleKey': 'queue_status_nav', 'subtitleKey': 'check_your_turn', 'icon': Icons.queue_rounded, 'color': const Color(0xFF10B981), 'screen': const QueueTabScreen()},
     {'titleKey': 'upload_document', 'subtitleKey': 'submit_files', 'icon': Icons.upload_file_rounded, 'color': const Color(0xFFF59E0B), 'screen': const DocumentUploadScreen()},
     {'titleKey': 'track_request', 'subtitleKey': 'view_progress', 'icon': Icons.track_changes_rounded, 'color': const Color(0xFF8B5CF6), 'screen': const RequestTrackingScreen()},

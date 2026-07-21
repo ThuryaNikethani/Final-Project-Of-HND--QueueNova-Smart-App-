@@ -19,6 +19,7 @@ import 'web_components/web_sidebar.dart';
 import 'web_components/modern_ui_components.dart';
 import 'web_queue_management.dart';
 import 'web_service_processing.dart';
+import 'web_online_service_requests.dart';
 import 'web_reception.dart';
 import 'web_analytics.dart';
 import 'web_users_management.dart';
@@ -424,6 +425,12 @@ class _WebDashboardState extends State<WebDashboard> {
         'permission': 'service_processing',
         'label': 'web_menu_service_processing',
         'icon': Icons.assignment
+      },
+      {
+        'widget': WebOnlineServiceRequests(userRole: widget.userRole, staffId: widget.userId, staffName: widget.userName),
+        'permission': 'online_service_requests',
+        'label': 'Online Requests',
+        'icon': Icons.cloud_done
       },
       {
         'widget': WebReception(userRole: widget.userRole, staffId: widget.userId),

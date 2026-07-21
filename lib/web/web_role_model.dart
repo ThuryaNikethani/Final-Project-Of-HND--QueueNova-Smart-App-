@@ -37,6 +37,7 @@ class RolePermissions {
     UserRole.serviceProcessor: [
       'dashboard',
       'service_processing',
+      'online_service_requests',
       'document_management',
       'account_deletion_requests',
       'notification_delivery_log',
@@ -55,6 +56,7 @@ class RolePermissions {
       'staff_performance',
       'payment_reports',
       'document_management',  // ← ADDED
+      'online_service_requests',
       'notification_history',
     ],
   };

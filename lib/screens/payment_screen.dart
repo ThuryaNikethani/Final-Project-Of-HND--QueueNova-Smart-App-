@@ -3,6 +3,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/services/payment_service.dart';
+import 'package:queuenova_mobile/services/online_service_request_service.dart';
 import 'package:queuenova_mobile/screens/payment_success_screen.dart';
 
 const Map<String, String> _kPaymentMethodKeys = {
@@ -17,6 +18,7 @@ class PaymentScreen extends StatefulWidget {
   final String appointmentId;
   final String serviceName;
   final String officeName;
+  final String requestType;
 
   const PaymentScreen({
     super.key,
@@ -24,6 +26,7 @@ class PaymentScreen extends StatefulWidget {
     required this.appointmentId,
     required this.serviceName,
     required this.officeName,
+    this.requestType = 'appointment',
   });
 
   @override
@@ -51,6 +54,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
+  }
+
+  /// Fire-and-forget: marks the online request as paid right after a
+  /// successful payment, only when this screen was opened for one (the
+  /// appointment flow already confirms its own payment status separately).
+  void _confirmOnlineRequestPaymentIfNeeded(String paymentMethod) {
+    if (widget.requestType == 'online_request') {
+      OnlineServiceRequestService.markPaid(
+        widget.appointmentId,
+        paymentMethod: paymentMethod,
+        service: widget.serviceName,
+      );
+    }
   }
 
   Future<void> _processPayment() async {
@@ -88,11 +104,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           amount: widget.amount,
           appointmentId: widget.appointmentId,
           paymentMethod: selectedPaymentMethod,
+          requestType: widget.requestType,
         );
-        
+
         setState(() => isProcessing = false);
         
         if (result['success']) {
+          _confirmOnlineRequestPaymentIfNeeded(selectedPaymentMethod);
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -122,6 +140,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         amount: widget.amount,
         appointmentId: widget.appointmentId,
         currency: 'lkr',
+        requestType: widget.requestType,
       );
 
       // No backend available – use simulation so the demo is functional
@@ -139,6 +158,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         }
 
         if (mounted) {
+          _confirmOnlineRequestPaymentIfNeeded(selectedPaymentMethod);
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -182,6 +202,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
 
       if (mounted) {
+        _confirmOnlineRequestPaymentIfNeeded(selectedPaymentMethod);
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -452,11 +473,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           amount: widget.amount,
                           appointmentId: widget.appointmentId,
                           paymentMethod: 'Mobile Banking',
+                          requestType: widget.requestType,
                         );
                         setState(() => isProcessing = false);
                         if (!mounted) return;
 
                         if (result['success'] == true) {
+                          _confirmOnlineRequestPaymentIfNeeded('Mobile Banking');
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
@@ -524,11 +547,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           amount: widget.amount,
                           appointmentId: widget.appointmentId,
                           paymentMethod: 'Online Banking',
+                          requestType: widget.requestType,
                         );
                         setState(() => isProcessing = false);
                         if (!context.mounted) return;
 
                         if (result['success'] == true) {
+                          _confirmOnlineRequestPaymentIfNeeded('Online Banking');
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
