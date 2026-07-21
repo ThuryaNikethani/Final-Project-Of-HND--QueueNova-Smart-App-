@@ -400,7 +400,7 @@ class WebApiService {
   }
 
   /// Approves every document attached to appointment [appointmentId].
-  static Future<bool> approveServiceRequest(int appointmentId, String reviewedBy) async {
+  static Future<bool> approveServiceRequest(String appointmentId, String reviewedBy) async {
     try {
       final res = await http
           .patch(
@@ -417,7 +417,7 @@ class WebApiService {
   }
 
   /// Rejects every document attached to appointment [appointmentId] with [reason].
-  static Future<bool> rejectServiceRequest(int appointmentId, String reviewedBy, {String reason = ''}) async {
+  static Future<bool> rejectServiceRequest(String appointmentId, String reviewedBy, {String reason = ''}) async {
     try {
       final res = await http
           .patch(
@@ -435,7 +435,7 @@ class WebApiService {
 
   /// Shares every document attached to appointment [appointmentId] with [departments]
   /// (additive — keeps whatever they were already shared with).
-  static Future<bool> shareServiceRequest(int appointmentId, List<String> departments, {String sharedBy = 'Officer'}) async {
+  static Future<bool> shareServiceRequest(String appointmentId, List<String> departments, {String sharedBy = 'Officer'}) async {
     try {
       final res = await http
           .patch(

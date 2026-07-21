@@ -65,6 +65,10 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('settings_updated', (_) => _loadQueueSettings());
+    // Picks up a payment confirmed elsewhere (e.g. the Appointments screen)
+    // after this citizen was already checked into the queue, so this table
+    // doesn't keep showing "Pending" once it's actually been paid.
+    _socket!.on('queue_update', (_) => _loadQueueFromApi());
     _socket!.connect();
   }
 

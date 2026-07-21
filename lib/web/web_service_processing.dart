@@ -220,7 +220,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
               trailing: const Icon(Icons.share),
               onTap: () async {
                 Navigator.pop(context);
-                await WebApiService.shareServiceRequest(request['id'] as int, [dept], sharedBy: 'Service Officer');
+                await WebApiService.shareServiceRequest(request['id'] as String, [dept], sharedBy: 'Service Officer');
                 await _loadRequestsFromApi();
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -292,7 +292,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
             onPressed: () async {
               final reason = reasonController.text;
               Navigator.pop(context);
-              await WebApiService.rejectServiceRequest(request['id'] as int, 'Service Officer', reason: reason);
+              await WebApiService.rejectServiceRequest(request['id'] as String, 'Service Officer', reason: reason);
               _notifyCitizenByNic(
                 nic: request['nic'] as String?,
                 title: 'Application Rejected',
@@ -345,7 +345,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await WebApiService.approveServiceRequest(request['id'] as int, 'Service Officer');
+              await WebApiService.approveServiceRequest(request['id'] as String, 'Service Officer');
               _notifyCitizenByNic(
                 nic: request['nic'] as String?,
                 title: 'Application Approved',

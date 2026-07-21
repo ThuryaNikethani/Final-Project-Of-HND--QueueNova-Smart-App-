@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'package:queuenova_mobile/config/app_colors.dart';
 import 'package:queuenova_mobile/models/appointment_model.dart';
 import 'package:queuenova_mobile/services/appointment_service.dart';
+import 'package:queuenova_mobile/services/queue_status_service.dart';
 import 'package:queuenova_mobile/models/online_service_request_model.dart';
 import 'package:queuenova_mobile/services/online_service_request_service.dart';
 
@@ -41,6 +44,13 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
   bool isLoadingOnline = true;
   StreamSubscription<List<OnlineServiceRequestModel>>? _onlineSubscription;
 
+  // An appointment's own status (Pending/Confirmed/Completed/Cancelled) is a
+  // separate lifecycle from the physical queue (waiting/serving/completed) —
+  // "Confirmed" alone never told a citizen their token had actually been
+  // called. Keyed by token so a card can show "Now Serving" live.
+  Map<String, String> _queueStatusByToken = {};
+  socket_io.Socket? _queueSocket;
+
   @override
   void initState() {
     super.initState();
@@ -65,12 +75,29 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
       if (!mounted) return;
       setState(() => isLoadingOnline = false);
     });
+
+    _loadQueueStatuses();
+    _queueSocket = QueueStatusService.connect(onQueueChanged: _loadQueueStatuses);
+  }
+
+  Future<void> _loadQueueStatuses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nic = prefs.getString('userNIC') ?? '';
+    if (nic.isEmpty) return;
+    final positions = await QueueStatusService.getMyQueuePositions(nic);
+    if (!mounted) return;
+    setState(() {
+      _queueStatusByToken = {
+        for (final p in positions) (p['token'] as String): (p['status'] as String),
+      };
+    });
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
     _onlineSubscription?.cancel();
+    _queueSocket?.dispose();
     super.dispose();
   }
 
@@ -275,6 +302,17 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
                   itemCount: filteredAppointments.length,
                   itemBuilder: (context, index) {
                     final apt = filteredAppointments[index];
+                    // The appointment's own status (Pending/Confirmed/...)
+                    // never reflects the live queue — overlay "Now Serving"
+                    // the moment an officer calls this token, without
+                    // touching the appointment's actual status/logic.
+                    final isServing = _queueStatusByToken[apt.token] == 'serving';
+                    final statusColor = isServing ? AppColors.primaryBlue : getStatusColor(apt.status);
+                    final statusLabel = isServing ? 'Now Serving' : _statusLabel(apt.status);
+                    final progress = isServing ? 0.7 : getProgress(apt.status);
+                    final statusText = isServing
+                        ? 'Your token has been called — please proceed to the counter'
+                        : getStatusText(apt.status);
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
@@ -293,10 +331,10 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: getStatusColor(apt.status).withOpacity(0.1),
+                                  color: statusColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Icon(Icons.request_page, color: getStatusColor(apt.status)),
+                                child: Icon(isServing ? Icons.record_voice_over : Icons.request_page, color: statusColor),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -311,27 +349,27 @@ class _RequestTrackingScreenState extends State<RequestTrackingScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: getStatusColor(apt.status).withOpacity(0.1),
+                                  color: statusColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
-                                  _statusLabel(apt.status),
-                                  style: TextStyle(fontSize: 11, color: getStatusColor(apt.status), fontWeight: FontWeight.w600),
+                                  statusLabel,
+                                  style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.w600),
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           LinearProgressIndicator(
-                            value: getProgress(apt.status),
+                            value: progress,
                             backgroundColor: AppColors.greyLight,
-                            valueColor: AlwaysStoppedAnimation<Color>(getStatusColor(apt.status)),
+                            valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                           ),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(getStatusText(apt.status), style: TextStyle(fontSize: 11, color: AppColors.grey)),
+                              Expanded(child: Text(statusText, style: TextStyle(fontSize: 11, color: AppColors.grey))),
                               Text(DateFormat('dd MMM yyyy').format(apt.date), style: TextStyle(fontSize: 11, color: AppColors.grey)),
                             ],
                           ),

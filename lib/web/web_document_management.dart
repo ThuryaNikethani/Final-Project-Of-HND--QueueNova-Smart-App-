@@ -95,6 +95,33 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
     });
   }
 
+  /// Notifies any staff logged in as a Department Manager the moment a
+  /// document is newly shared with one of their departments — mirrors the
+  /// `staff_notifications` pattern every other realtime action in this app
+  /// already uses (see `_notifyStaffOfNewRequest` in
+  /// online_service_request_service.dart), so the receiving office finds
+  /// out instantly instead of having to happen upon the "Shared" filter.
+  /// [newDepartments] should be only the departments just added by this
+  /// share action, not the full list, so re-saving unchanged selections
+  /// doesn't re-notify.
+  Future<void> _notifyOfficeOfSharedDocument(Map<String, dynamic> doc, List<String> newDepartments) async {
+    if (newDepartments.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance.collection('staff_notifications').add({
+        'title': 'Document Shared With Your Office',
+        'message': 'A ${doc['docType']} document for ${doc['name']} has been shared with ${newDepartments.join(', ')}.',
+        'type': 'document',
+        'action': 'View Document',
+        'targetRoles': const ['departmentManager'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyOfficeOfSharedDocument failed: $e');
+    }
+  }
+
   /// Notifies the citizen identified by [nic] via the `notifications`
   /// collection (the same one the citizen app's Notifications screen reads
   /// live). Looks the uid up through `nic_index`, same as login does.
@@ -418,11 +445,16 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                         child: ElevatedButton(
                           onPressed: () async {
                             Navigator.pop(dialogContext);
+                            final previouslyShared = (doc['sharedWith'] as List).cast<String>();
+                            final newlyShared = tempSelectedDepartments
+                                .where((d) => !previouslyShared.contains(d))
+                                .toList();
                             await WebApiService.shareDocument(
                               doc['id'] as int,
                               tempSelectedDepartments,
                               sharedBy: 'Document Officer',
                             );
+                            _notifyOfficeOfSharedDocument(doc, newlyShared);
                             await _loadDocumentsFromApi();
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -573,15 +605,18 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                           DataCell(
                             doc['sharedCount'] == 0
                                 ? Text('web_not_shared'.tr(), style: const TextStyle(color: Colors.grey))
-                                : Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1A56DB).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'web_dept_count'.tr(args: ['${doc['sharedCount']}']),
-                                      style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB)),
+                                : Tooltip(
+                                    message: (doc['sharedWith'] as List).cast<String>().join(', '),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF1A56DB).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        'web_dept_count'.tr(args: ['${doc['sharedCount']}']),
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB)),
+                                      ),
                                     ),
                                   ),
                           ),

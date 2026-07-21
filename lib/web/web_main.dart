@@ -1318,6 +1318,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                                       builder: (context) => WebOnlineServiceRequests(
                                           userRole: widget.userRole, staffId: widget.staffId, staffName: widget.userName)),
                                 );
+                              } else if (notif['action'] == 'View Document') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const WebDocumentManagement()),
+                                );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
