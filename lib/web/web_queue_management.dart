@@ -43,6 +43,10 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
   List<Map<String, dynamic>> queueList = [];
 
+  // Tokens already called (Call Next) but not yet marked Complete — kept
+  // visible/actionable here instead of just vanishing once called.
+  List<Map<String, dynamic>> servingList = [];
+
   List<Map<String, dynamic>> emergencyQueue = [];
 
   // Queue Settings → "Enable Emergency Queue": when off, emergency handling
@@ -89,6 +93,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
 
   Future<void> _loadQueueFromApi() async {
     final rows = await WebApiService.getQueue(selectedOffice);
+    final serving = await WebApiService.getServingQueue(selectedOffice);
     final emergency = await WebApiService.getEmergencyQueue(selectedOffice);
     final stats = await WebApiService.getQueueStats(selectedOffice);
     if (!mounted) return;
@@ -119,6 +124,23 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
           'id': r['id'],
         }).toList();
         totalInQueue = queueList.length;
+      });
+    }
+    if (serving.isNotEmpty) {
+      setState(() {
+        servingList = serving.map((r) => {
+          'token': r['token'] ?? '',
+          'citizen': r['citizen_name'] ?? '',
+          'citizen_nic': r['citizen_nic'],
+          'service': r['service'] ?? '',
+          'status': r['status'] ?? 'serving',
+          'waitTime': r['wait_time'] ?? '-- min',
+          'isPriority': r['is_priority'] == true || r['is_priority'] == 1,
+          'counter': r['counter'] ?? 1,
+          'paymentStatus': r['payment_status'] ?? 'pending',
+          'fee': double.tryParse(r['fee']?.toString() ?? '') ?? 0.0,
+          'id': r['id'],
+        }).toList();
       });
     }
     if (emergency.isNotEmpty) {
@@ -183,10 +205,12 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
       return;
     }
 
-    // Optimistic UI
+    // Optimistic UI — moves the called token into the "Currently Serving"
+    // list instead of just removing it, so it stays visible/actionable.
     setState(() {
       currentServing = int.tryParse(nextToken['token'].toString().split('-').last) ?? currentServing;
       queueList.removeAt(0);
+      servingList.add({...nextToken, 'status': 'serving'});
       totalInQueue--;
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -208,10 +232,13 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
   }
 
   void _completeService(Map<String, dynamic> token) {
-    // Optimistic UI
+    // Optimistic UI. totalInQueue only counts the waiting list, so it's
+    // only decremented if the token actually came from there — a token
+    // completed from servingList was already excluded from that count back
+    // when it was called.
     setState(() {
-      queueList.remove(token);
-      totalInQueue--;
+      if (queueList.remove(token)) totalInQueue--;
+      servingList.remove(token);
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('web_service_completed_message'.tr()), backgroundColor: Colors.blue),
@@ -474,6 +501,41 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
                 ),
               if (emergencyQueue.isNotEmpty) const SizedBox(height: 12),
 
+              // Currently Serving — tokens already called (Call Next) but
+              // not yet marked Complete, so a called token stays visible
+              // and actionable instead of just disappearing.
+              if (servingList.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Currently Serving',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${servingList.length} being served',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: servingList.map((item) => _buildServingCard(item)).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // Queue List Header
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -658,6 +720,81 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildServingCard(Map<String, dynamic> item) {
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(item['token'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF10B981))),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text('C${item['counter']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 10, color: Color(0xFF7C3AED))),
+              ),
+              const Spacer(),
+              Tooltip(
+                message: 'web_tooltip_send_notification'.tr(),
+                child: IconButton(
+                  icon: const Icon(Icons.notifications_outlined),
+                  onPressed: () => _sendNotification(item),
+                  style: IconButton.styleFrom(backgroundColor: Colors.orange.withOpacity(0.1), foregroundColor: Colors.orange),
+                  iconSize: 14,
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                ),
+              ),
+              Tooltip(
+                message: 'web_reassign_counter'.tr(),
+                child: IconButton(
+                  icon: const Icon(Icons.swap_horiz_rounded),
+                  onPressed: () => _reassignCounter(item),
+                  style: IconButton.styleFrom(backgroundColor: const Color(0xFF1A56DB).withOpacity(0.1), foregroundColor: const Color(0xFF1A56DB)),
+                  iconSize: 14,
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                ),
+              ),
+              Tooltip(
+                message: 'web_tooltip_complete_service'.tr(),
+                child: IconButton(
+                  icon: const Icon(Icons.check_circle_outline),
+                  onPressed: () => _completeService(item),
+                  style: IconButton.styleFrom(backgroundColor: const Color(0xFF10B981).withOpacity(0.1), foregroundColor: const Color(0xFF10B981)),
+                  iconSize: 14,
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(item['citizen'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(item['service'], style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        ],
       ),
     );
   }

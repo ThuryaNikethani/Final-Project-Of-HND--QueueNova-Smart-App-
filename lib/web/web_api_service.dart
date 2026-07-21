@@ -92,6 +92,22 @@ class WebApiService {
     return [];
   }
 
+  /// Tokens already called (Call Next) but not yet marked Complete.
+  static Future<List<Map<String, dynamic>>> getServingQueue(String officeId) async {
+    try {
+      final encoded = Uri.encodeComponent(officeId);
+      final res = await http
+          .get(Uri.parse('$_base/queue/$encoded/serving'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('WebApiService.getServingQueue error: $e');
+    }
+    return [];
+  }
+
   /// Returns null on success, or the server's rejection message (e.g. Max
   /// Queue per Counter / Priority Queue Limit reached) on failure — the
   /// caller should surface that message rather than treat this as a bare
