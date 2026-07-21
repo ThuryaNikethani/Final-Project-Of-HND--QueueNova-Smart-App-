@@ -14,7 +14,14 @@ class SendResult {
 /// Every method falls back silently on error so existing in-memory state
 /// still works when the server is not running.
 class WebApiService {
-  static const String _base = 'http://localhost:3000/api/web';
+  /// Backend origin (scheme+host+port), overridable at build time with
+  /// `--dart-define=API_ORIGIN=https://your-backend.example.com` for
+  /// deployments where the dashboard isn't served from the same host as
+  /// the Node/Postgres server. Defaults to the local dev server unchanged.
+  static const String apiOrigin =
+      String.fromEnvironment('API_ORIGIN', defaultValue: 'http://localhost:3000');
+
+  static const String _base = '$apiOrigin/api/web';
 
   static Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -1201,7 +1208,7 @@ class WebApiService {
 
   // ── SMS ─────────────────────────────────────────────────────────────────────
 
-  static const String _smsBase = 'http://localhost:3000/api/sms';
+  static const String _smsBase = '$apiOrigin/api/sms';
 
   /// Send an SMS via Twilio (server-side, delivered regardless of whether the
   /// citizen's app is open). [phone] must be in E.164 format (e.g. `+94771234567`).
@@ -1247,7 +1254,7 @@ class WebApiService {
 
   // ── Push Notifications (FCM) ─────────────────────────────────────────────────
 
-  static const String _pushBase = 'http://localhost:3000/api/push';
+  static const String _pushBase = '$apiOrigin/api/push';
 
   /// Send a push notification to one or more FCM device tokens, delivered
   /// regardless of whether the app is open (foreground, backgrounded, or
@@ -1277,7 +1284,7 @@ class WebApiService {
 
   // ── ML Predictions ────────────────────────────────────────────────────────────
 
-  static const _mlBase = 'http://localhost:3000/api/ml';
+  static const _mlBase = '$apiOrigin/api/ml';
 
   static Future<Map<String, dynamic>?> _mlPost(
       String path, Map<String, dynamic> body) async {

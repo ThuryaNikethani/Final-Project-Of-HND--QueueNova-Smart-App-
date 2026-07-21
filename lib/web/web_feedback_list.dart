@@ -31,7 +31,7 @@ class _WebFeedbackListState extends State<WebFeedbackList> {
     super.initState();
     _load();
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('feedback_update', (_) => _load());

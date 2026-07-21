@@ -26,7 +26,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
     super.initState();
     _loadRequestsFromApi();
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('document_update', (_) => _loadRequestsFromApi());
@@ -171,7 +171,7 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
                     onPressed: docId == null
                         ? null
                         : () => launchUrl(
-                              Uri.parse('http://localhost:3000/api/web/documents/download/$docId'),
+                              Uri.parse('${WebApiService.apiOrigin}/api/web/documents/download/$docId'),
                               webOnlyWindowName: '_blank',
                             ),
                     icon: const Icon(Icons.download),

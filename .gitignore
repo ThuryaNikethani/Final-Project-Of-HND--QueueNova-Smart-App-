@@ -59,3 +59,4 @@ lib/firebase_options.dart
 
 # ML model exceeds GitHub's 100MB file size limit
 lib/web/backend_server/ml/models/wait_time_model.pkl
+.vercel

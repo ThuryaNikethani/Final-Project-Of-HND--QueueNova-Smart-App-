@@ -89,7 +89,7 @@ class _WebReceptionState extends State<WebReception> {
     _loadReceptionStats();
     _loadWalkInsFromApi();
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('appointment_update', (_) => _loadAppointmentsFromApi());

@@ -26,7 +26,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
     super.initState();
     _loadDocumentsFromApi();
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('document_update', (_) => _loadDocumentsFromApi());
@@ -600,7 +600,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                       return;
                                     }
                                     launchUrl(
-                                      Uri.parse('http://localhost:3000/api/web/documents/download/${doc['id']}'),
+                                      Uri.parse('${WebApiService.apiOrigin}/api/web/documents/download/${doc['id']}'),
                                       webOnlyWindowName: '_blank',
                                     );
                                   },

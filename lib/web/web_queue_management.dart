@@ -61,7 +61,7 @@ class _WebQueueManagementState extends State<WebQueueManagement> {
     // navigate away and back — same live pattern web_reception.dart already
     // uses for appointment/queue updates.
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('settings_updated', (_) => _loadQueueSettings());

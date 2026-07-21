@@ -656,7 +656,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     }, onError: (_) {});
 
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.onConnect((_) {

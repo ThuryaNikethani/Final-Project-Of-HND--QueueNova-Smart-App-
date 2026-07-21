@@ -31,7 +31,7 @@ class _WebAppointmentsState extends State<WebAppointments> {
     super.initState();
     _loadAppointmentsFromApi();
     _socket = socket_io.io(
-      'http://localhost:3000',
+      WebApiService.apiOrigin,
       socket_io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
     );
     _socket!.on('appointment_update', (_) => _loadAppointmentsFromApi());
