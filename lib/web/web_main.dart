@@ -1311,6 +1311,13 @@ class _DashboardHomeState extends State<DashboardHome> {
                                   MaterialPageRoute(
                                       builder: (context) => WebFeedbackList(staffName: widget.userName)),
                                 );
+                              } else if (notif['action'] == 'View Request') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => WebOnlineServiceRequests(
+                                          userRole: widget.userRole, staffId: widget.staffId, staffName: widget.userName)),
+                                );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
