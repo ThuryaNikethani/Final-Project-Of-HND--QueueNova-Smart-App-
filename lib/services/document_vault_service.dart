@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,8 @@ class DocumentModel {
   final DateTime uploadDate;
   final List<String> sharedWith;
   final String category;
+  final String status;
+  final String? rejectionReason;
 
   DocumentModel({
     required this.id,
@@ -22,6 +25,8 @@ class DocumentModel {
     required this.uploadDate,
     required this.sharedWith,
     this.category = 'Other',
+    this.status = 'pending',
+    this.rejectionReason,
   });
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +37,8 @@ class DocumentModel {
     'uploadDate': uploadDate.toIso8601String(),
     'sharedWith': sharedWith,
     'category': category,
+    'status': status,
+    'rejectionReason': rejectionReason,
   };
 
   factory DocumentModel.fromJson(Map<String, dynamic> json) => DocumentModel(
@@ -42,6 +49,8 @@ class DocumentModel {
     uploadDate: DateTime.parse(json['uploadDate']),
     sharedWith: List<String>.from(json['sharedWith']),
     category: json['category'] as String? ?? 'Other',
+    status: json['status'] as String? ?? 'pending',
+    rejectionReason: json['rejectionReason'] as String?,
   );
 }
 
@@ -75,6 +84,8 @@ class DocumentVaultService {
       uploadDate: DateTime.tryParse(row['uploaded_at']?.toString() ?? '') ?? DateTime.now(),
       sharedWith: List<String>.from(row['shared_with'] as List? ?? const []),
       category: row['document_type'] as String? ?? 'Other',
+      status: (row['status'] as String?) ?? 'pending',
+      rejectionReason: row['rejection_reason'] as String?,
     );
   }
 
@@ -136,6 +147,55 @@ class DocumentVaultService {
     } catch (e) {
       debugPrint('DocumentVaultService.uploadDocument error: $e');
       return null;
+    }
+  }
+
+  /// Replaces a rejected document with a corrected file. The backend resets
+  /// it to 'pending' and clears the old rejection, reusing whatever it was
+  /// already linked/shared to — so it reappears automatically in the same
+  /// reviewer's Pending queue with no extra routing needed here. [wasShared]
+  /// determines who gets notified: the department that rejected it if the
+  /// document was shared, otherwise the Service Officer.
+  static Future<DocumentModel?> resubmitDocument(String docId, XFile file, {required bool wasShared}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('userName') ?? '';
+      final bytes = await file.readAsBytes();
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${BackendConfig.baseUrl}/api/web/documents/$docId/resubmit'),
+      )..files.add(http.MultipartFile.fromBytes('file', bytes, filename: file.name));
+
+      final streamed = await request.send().timeout(const Duration(seconds: 20));
+      final body = await streamed.stream.bytesToString();
+      if (streamed.statusCode != 200) {
+        debugPrint('DocumentVaultService.resubmitDocument failed (${streamed.statusCode}): $body');
+        return null;
+      }
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      _notifyReviewerOfResubmission(wasShared: wasShared, citizenName: name);
+      return _fromRow(decoded['document'] as Map<String, dynamic>);
+    } catch (e) {
+      debugPrint('DocumentVaultService.resubmitDocument error: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _notifyReviewerOfResubmission({required bool wasShared, required String citizenName}) async {
+    try {
+      await FirebaseFirestore.instance.collection('staff_notifications').add({
+        'title': 'Document Resubmitted',
+        'message': '${citizenName.isNotEmpty ? citizenName : 'A citizen'} resubmitted a corrected document for review.',
+        'type': 'document',
+        'action': 'View Document',
+        'targetRoles': [wasShared ? 'departmentManager' : 'serviceProcessor'],
+        'readBy': <String>[],
+        'dismissedBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('_notifyReviewerOfResubmission failed: $e');
     }
   }
 
