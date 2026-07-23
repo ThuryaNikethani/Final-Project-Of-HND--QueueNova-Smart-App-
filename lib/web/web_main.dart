@@ -25,6 +25,7 @@ import 'web_analytics.dart';
 import 'web_users_management.dart';
 import 'web_reports.dart';
 import 'web_document_management.dart';
+import 'web_department_documents.dart';
 import 'web_appointments.dart';
 import 'web_system_settings.dart';
 import 'web_staff_performance.dart';
@@ -443,6 +444,12 @@ class _WebDashboardState extends State<WebDashboard> {
         'permission': 'document_management',
         'label': 'web_menu_documents',
         'icon': Icons.description
+      },
+      {
+        'widget': const WebDepartmentDocuments(),
+        'permission': 'shared_documents',
+        'label': 'Shared Documents',
+        'icon': Icons.folder_shared
       },
       {
         'widget': WebAccountDeletionRequests(officerName: widget.userName),
@@ -1321,7 +1328,10 @@ class _DashboardHomeState extends State<DashboardHome> {
                               } else if (notif['action'] == 'View Document') {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const WebDocumentManagement()),
+                                  MaterialPageRoute(
+                                      builder: (context) => widget.userRole == UserRole.departmentManager
+                                          ? const WebDepartmentDocuments()
+                                          : const WebDocumentManagement()),
                                 );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
