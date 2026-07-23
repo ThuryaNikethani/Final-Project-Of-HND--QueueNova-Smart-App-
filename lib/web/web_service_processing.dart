@@ -313,24 +313,6 @@ class _WebServiceProcessingState extends State<WebServiceProcessing> {
   }
 
   void _showApproveDialog(Map<String, dynamic> request) {
-    if (request['paymentStatus'] == 'pending') {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('web_payment_required'.tr()),
-          content: Text('web_payment_pending_approve_message'.tr(args: ['${request['fee']}'])),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('ok'.tr()),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
