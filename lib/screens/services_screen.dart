@@ -408,48 +408,60 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 14),
-                                  Row(
+                                  Wrap(
+                                    alignment: WrapAlignment.spaceBetween,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 8,
                                     children: [
-                                      _buildInfoChip(Icons.timer, 'minutes_suffix'.tr(args: ['${service['time']}']), AppColors.info),
-                                      const SizedBox(width: 10),
-                                      _buildInfoChip(Icons.currency_rupee, 'rupee_amount'.tr(args: [service['fee']]), AppColors.success),
-                                      const Spacer(),
-                                      OutlinedButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => OnlineServiceRequestScreen(
-                                                preSelectedService: service['name'] as String,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          side: const BorderSide(color: AppColors.primaryBlue),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                        ),
-                                        child: const Text('Request Online', style: TextStyle(fontSize: 13)),
+                                      Wrap(
+                                        spacing: 10,
+                                        children: [
+                                          _buildInfoChip(Icons.timer, 'minutes_suffix'.tr(args: ['${service['time']}']), AppColors.info),
+                                          _buildInfoChip(Icons.currency_rupee, 'rupee_amount'.tr(args: [service['fee']]), AppColors.success),
+                                        ],
                                       ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => BookAppointmentScreen(
-                                                preSelectedService: service['name'] as String,
-                                              ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          OutlinedButton(
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => OnlineServiceRequestScreen(
+                                                    preSelectedService: service['name'] as String,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              side: const BorderSide(color: AppColors.primaryBlue),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                             ),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppColors.primaryBlue,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                        ),
-                                        child: Text('book_now'.tr(), style: const TextStyle(fontSize: 13)),
+                                            child: const Text('Request Online', style: TextStyle(fontSize: 13)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton(
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => BookAppointmentScreen(
+                                                    preSelectedService: service['name'] as String,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.primaryBlue,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                            ),
+                                            child: Text('book_now'.tr(), style: const TextStyle(fontSize: 13)),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
