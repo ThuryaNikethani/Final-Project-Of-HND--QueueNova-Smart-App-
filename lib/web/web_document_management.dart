@@ -81,6 +81,7 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
           'name': r['citizen_name'] ?? '',
           'nic': r['citizen_nic'],
           'docType': r['document_type'] ?? '',
+          'token': r['appointment_token'],
           'date': _formatDate(r['uploaded_at']?.toString()),
           'status': _capitalize(r['status']?.toString() ?? 'pending'),
           'file': r['document_name'] ?? '',
@@ -287,6 +288,28 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
             onPressed: () => Navigator.pop(context),
             child: Text('close'.tr()),
           ),
+          // Forwards the reason straight to this document's own citizen —
+          // _notifyCitizenByNic resolves the uid strictly from doc['nic'],
+          // so this can never reach anyone but the citizen this document
+          // actually belongs to. Needed specifically for documents a
+          // department rejected (that flow deliberately notifies only this
+          // officer, not the citizen) — forwarding here is the follow-up.
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _notifyCitizenByNic(
+                nic: doc['nic'] as String?,
+                title: 'Document Rejected',
+                message: 'Your ${doc['docType']} document was rejected. Reason: ${doc['rejectionReason']}',
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Reason forwarded to ${doc['name']}'), backgroundColor: Colors.green),
+              );
+            },
+            icon: const Icon(Icons.send, size: 16),
+            label: const Text('Forward to Citizen'),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A56DB)),
+          ),
         ],
       ),
     );
@@ -485,11 +508,15 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredDocs = selectedFilter == 'All' 
-        ? documents 
+    // Pending/Approved/Rejected here are the Service Officer's own review
+    // outcomes — once a document is shared, its Approve/Reject decision
+    // belongs to the department (see the "Department Action" column), so it
+    // no longer counts as the officer's own Pending/Approved/Rejected.
+    final filteredDocs = selectedFilter == 'All'
+        ? documents
         : selectedFilter == 'Shared'
             ? documents.where((d) => d['sharedCount'] > 0).toList()
-            : documents.where((d) => d['status'] == selectedFilter).toList();
+            : documents.where((d) => d['status'] == selectedFilter && d['sharedCount'] == 0).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
@@ -508,15 +535,15 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                 _buildStatCard('web_total_documents'.tr(), documents.length.toString(), Colors.blue),
                 const SizedBox(width: 12),
                 _buildStatCard('web_status_pending'.tr(),
-                    documents.where((d) => d['status'] == 'Pending').length.toString(),
+                    documents.where((d) => d['status'] == 'Pending' && d['sharedCount'] == 0).length.toString(),
                     Colors.orange),
                 const SizedBox(width: 12),
                 _buildStatCard('web_status_approved'.tr(),
-                    documents.where((d) => d['status'] == 'Approved').length.toString(),
+                    documents.where((d) => d['status'] == 'Approved' && d['sharedCount'] == 0).length.toString(),
                     Colors.green),
                 const SizedBox(width: 12),
                 _buildStatCard('web_status_rejected'.tr(),
-                    documents.where((d) => d['status'] == 'Rejected').length.toString(),
+                    documents.where((d) => d['status'] == 'Rejected' && d['sharedCount'] == 0).length.toString(),
                     Colors.red),
                 const SizedBox(width: 12),
                 _buildStatCard('web_status_shared'.tr(),
@@ -565,42 +592,67 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                         DataColumn(label: Text('web_citizen_name'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_nic'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_document_type'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        const DataColumn(label: Text('Token', style: TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_upload_date'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_status'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_shared_with'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
+                        const DataColumn(label: Text('Department Action', style: TextStyle(fontWeight: FontWeight.w600))),
                         DataColumn(label: Text('web_col_actions'.tr(), style: const TextStyle(fontWeight: FontWeight.w600))),
                       ],
                       rows: filteredDocs.map((doc) {
-                        Color statusColor = doc['status'] == 'Approved' 
-                            ? Colors.green 
+                        final isShared = doc['sharedCount'] > 0;
+                        Color statusColor = doc['status'] == 'Approved'
+                            ? Colors.green
                             : (doc['status'] == 'Pending' ? Colors.orange : Colors.red);
                         return DataRow(cells: [
                           DataCell(Text(doc['name'])),
                           DataCell(Text(doc['nic'] ?? '—')),
                           DataCell(Text(doc['docType'])),
+                          DataCell(Text(doc['token'] ?? '—')),
                           DataCell(Text(doc['date'])),
+                          // Status — the Service Officer's own review state.
+                          // Once shared, review is the department's call (see
+                          // the "Department Action" column), so this simply
+                          // shows "Shared" rather than the department's
+                          // outcome.
                           DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    doc['status'] == 'Approved' ? Icons.check_circle : 
-                                    (doc['status'] == 'Pending' ? Icons.pending : Icons.cancel),
-                                    size: 14,
-                                    color: statusColor,
+                            isShared
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1A56DB).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.share, size: 14, color: Color(0xFF1A56DB)),
+                                        SizedBox(width: 4),
+                                        Text('Shared', style: TextStyle(color: Color(0xFF1A56DB), fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  )
+                                : Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: statusColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          doc['status'] == 'Approved' ? Icons.check_circle :
+                                          (doc['status'] == 'Pending' ? Icons.pending : Icons.cancel),
+                                          size: 14,
+                                          color: statusColor,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(_statusLabel(doc['status'] as String),
+                                          style: TextStyle(color: statusColor, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(_statusLabel(doc['status'] as String),
-                                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
                           ),
                           DataCell(
                             doc['sharedCount'] == 0
@@ -618,6 +670,35 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                         style: const TextStyle(fontSize: 11, color: Color(0xFF1A56DB)),
                                       ),
                                     ),
+                                  ),
+                          ),
+                          // Department Action — the department's own
+                          // approve/reject outcome, only meaningful once a
+                          // document has actually been shared with one.
+                          DataCell(
+                            !isShared
+                                ? const Text('—', style: TextStyle(color: Colors.grey))
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(_statusLabel(doc['status'] as String),
+                                            style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12)),
+                                      ),
+                                      if (doc['status'] == 'Rejected' && doc['rejectionReason'] != null)
+                                        IconButton(
+                                          icon: const Icon(Icons.info_outline, size: 16, color: Colors.red),
+                                          tooltip: 'web_view_rejection_reason_tooltip'.tr(),
+                                          onPressed: () => _showRejectionReason(doc),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                    ],
                                   ),
                           ),
                           DataCell(
@@ -643,8 +724,12 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
-                                // Approve Button (only for pending)
-                                if (doc['status'] == 'Pending') ...[
+                                // Approve/Reject: once a document has been
+                                // shared with a department, it moves to the
+                                // Department Manager's own dedicated screen
+                                // (web_department_documents.dart) — no
+                                // longer actionable from here at all.
+                                if (doc['status'] == 'Pending' && doc['sharedCount'] == 0) ...[
                                   IconButton(
                                     icon: const Icon(Icons.check_circle, size: 18, color: Colors.green),
                                     onPressed: () => _approveDocument(doc),
@@ -660,15 +745,11 @@ class _WebDocumentManagementState extends State<WebDocumentManagement> {
                                     constraints: const BoxConstraints(),
                                   ),
                                 ],
-                                // Rejection Reason (only for rejected)
-                                if (doc['status'] == 'Rejected' && doc['rejectionReason'] != null)
-                                  IconButton(
-                                    icon: const Icon(Icons.info_outline, size: 18, color: Colors.red),
-                                    onPressed: () => _showRejectionReason(doc),
-                                    tooltip: 'web_view_rejection_reason_tooltip'.tr(),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                  ),
+                                // Rejection-reason viewing now lives only in
+                                // the "Department Action" column for shared
+                                // documents; an officer's own direct
+                                // rejection reason is one they wrote
+                                // themselves, so no separate icon here.
                                 // Share Button
                                 IconButton(
                                   icon: const Icon(Icons.share, size: 18, color: Color(0xFF1A56DB)),
