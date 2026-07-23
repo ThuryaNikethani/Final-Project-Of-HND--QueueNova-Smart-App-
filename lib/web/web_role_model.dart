@@ -55,7 +55,7 @@ class RolePermissions {
       'reports',
       'staff_performance',
       'payment_reports',
-      'document_management',  // ← ADDED
+      'shared_documents',
       'online_service_requests',
       'notification_history',
     ],
